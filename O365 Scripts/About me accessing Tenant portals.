@@ -1,0 +1,15 @@
+#these are codes to help you automate O365 tasks. 
+# Furthermore, you will have to connect to the exchange module.
+# See below, you will have to login with the Tenant information. 
+
+# Connect to Exchange Online
+$UserCredential = Get-Credential
+Connect-ExchangeOnline -Credential $UserCredential
+
+# Connect to SharePoint Online
+$UserCredential = Get-Credential
+Connect-SPOService -Credential $UserCredential
+
+# Connect to Microsoft Teams
+$UserCredential = Get-Credential
+Connect-MicrosoftTeams -Credential $UserCredential
