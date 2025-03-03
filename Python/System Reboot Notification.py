@@ -1,0 +1,29 @@
+Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
+Type "help", "copyright", "credits" or "license()" for more information.
+>>> import os
+... import smtplib
+... from email.mime.text import MIMEText
+... 
+... def send_email(subject, body):
+...     sender = "your_email@example.com"
+...     receiver = "recipient@example.com"
+...     msg = MIMEText(body)
+...     msg['Subject'] = subject
+...     msg['From'] = sender
+...     msg['To'] = receiver
+... 
+...     with smtplib.SMTP('smtp.example.com') as server:
+...         server.login("your_username", "your_password")
+...         server.sendmail(sender, receiver, msg.as_string())
+... 
+... def reboot_system():
+...     send_email("System Reboot Notification", "The system is about to reboot.")
+...     os.system("sudo reboot")
+... 
+... if __name__ == "__main__":
+...     reboot_system()
+... 
+... 
+... 
+... 
+... 
