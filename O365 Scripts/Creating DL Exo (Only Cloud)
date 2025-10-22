@@ -1,0 +1,43 @@
+# Creating Distrubutioub list. 
+
+
+# 1) Connect
+Connect-ExchangeOnline
+
+# 2) Variables
+$Name   = "Test Team"
+$Alias  = "TestTeam"
+$SMTP   = "TestTeam@TestDomain.com"
+$Owner  = "Ajay@TestDomain.com"
+
+$Members = @(
+  "Ajay@TestDomain.com",     # include owner so they receive mail; remove if not desired
+  "TestPerson2@TestDomain.com",
+  "TestPerson3@TestDomain.com",
+  "TestPerson4@TestDomain.com",
+  "TestPerson5@TestDomain.com",
+  "TestPerson6@TestDomain.com",
+  "TestPerson7@TestDomain.com"
+)
+
+# 3) Create the distribution group
+$dg = New-DistributionGroup `
+        -Name $Name `
+        -DisplayName $Name `
+        -Alias $Alias `
+        -PrimarySmtpAddress $SMTP `
+        -ManagedBy $Owner `
+        -MemberJoinRestriction Closed `
+        -MemberDepartRestriction Closed
+
+# 4) Allow external senders
+Set-DistributionGroup -Identity $dg.Identity -RequireSenderAuthenticationEnabled $false
+
+# 5) Add members
+$Members | ForEach-Object {
+  Add-DistributionGroupMember -Identity $dg.Identity -Member $_
+}
+
+# 6) Quick verification
+Get-DistributionGroup $Alias | Format-List DisplayName,PrimarySmtpAddress,ManagedBy,RequireSenderAuthenticationEnabled
+Get-DistributionGroupMember $Alias | Select-Object Name,PrimarySmtpAddress
