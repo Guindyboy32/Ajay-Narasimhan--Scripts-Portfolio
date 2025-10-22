@@ -13,5 +13,3 @@ Set-MailboxFolderPermission -Identity "$MailboxOwner:\Calendar" -User $Delegate 
 #Verifying permissions
 Get-MailboxFolderPermission -Identity "Ajay@TestDomain.com:\Calendar"
 
-##_______________##
-
