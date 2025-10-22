@@ -1,0 +1,196 @@
+## Overview:  Dynamic Hardware Provisioning Script project: a production-ready blueprint you can run with Postman or a small Python script. It handles IDs, validation, retries, and logging.
+
+1) Input format (master JSON file)
+
+Create assets_to_create.json:
+
+[
+  {
+    "serial": "ADADAdda",
+    "asset_tag": "TEST-ADADAdda",
+    "status": "Ready to Deploy",
+    "model": "DELLVO",
+    "location": "Hogwarts",
+    "category": "Dellvoss",
+    "custom": {
+      "_snipeit_lte_capable_8": "Yes",
+      "_snipeit_warranty_expiry_7": "2028-04-18",
+      "_snipeit_warranty_type_6": "DEVLO"
+    }
+  },
+  {
+    "serial": "DADADADA",
+    "asset_tag": "TST-DADADADA",
+    "status": "Ready to Deploy",
+    "model": "DELLVO",
+    "location": "Hogwarts",
+    "category": "Dellvosss",
+    "custom": {
+      "_snipeit_lte_capable_8": "Yes",
+      "_snipeit_warranty_expiry_7": "2028-04-18",
+      "_snipeit_warranty_type_6": "DEVLO"
+    }
+  }
+]
+
+2.Postman approach (two-request flow)
+Request A — Resolve IDs (Pre-step)
+
+GET https://TESSTDOMAIN.snipe-it.io/api/v1/models?search={{model}}&limit=1
+Tests:
+
+const m = pm.response.json();
+const modelId = m?.rows?.[0]?.id;
+pm.test("Model found", () => pm.expect(modelId, "No model match").to.be.a("number"));
+pm.variables.set("model_id", modelId);
+
+
+# Send another request in the same folder to resolve location: GET https://TESSTDOMAIN.snipe-it.io/api/v1/locations?search={{location}}&limit=1
+
+Request B — Create Asset
+
+POST https://TESSTDOMAIN.snipe-it.io/api/v1/hardware
+Headers: Authorization: Bearer <TOKEN>, Content-Type: application/json, Accept: application/json
+Body (raw JSON):
+
+{
+  "location_id": {{location_id}},
+  "name": "{{serial}}",
+  "status_id": {{status_id}},
+  "asset_tag": "{{asset_tag}}",
+  "model_id": {{model_id}},
+  "serial": "{{serial}}",
+  "category_id": 17,
+  "_snipeit_lte_capable_8": "{{custom._snipeit_lte_capable_8}}",
+  "_snipeit_warranty_expiry_7": "{{custom._snipeit_warranty_expiry_7}}",
+  "_snipeit_warranty_type_6": "{{custom._snipeit_warranty_type_6}}"
+}
+
+Runner
+
+Load assets_to_create.json as the data file.
+
+Order: Resolve Model → Resolve Location → (Resolve Status) → Create Asset.
+
+This runs once per array item.
+
+
+3) Python approach (single file, robust)
+
+##Save as provision_assets.py. Set env var SNIPE_TOKEN.
+
+
+## Python Script below for execution with items changed##
+
+import os, json, time, csv
+import requests
+
+BASE = "https://TESSTDOMAIN.snipe-it.io/api/v1"
+TOKEN = os.getenv("SNIPE_TOKEN")
+HEADERS = {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json", "Content-Type": "application/json"}
+
+INPUT = "assets_to_create.json"
+LOG_OK = "assets_created.csv"
+LOG_ERR = "assets_errors.csv"
+
+def get_first_id(endpoint, q):
+    r = requests.get(f"{BASE}/{endpoint}", headers=HEADERS, params={"search": q, "limit": 1}, timeout=30)
+    r.raise_for_status()
+    rows = r.json().get("rows", [])
+    return rows[0]["id"] if rows else None
+
+def backoff_retry(func, *, retries=3, base=0.8):
+    for i in range(retries):
+        try:
+            return func()
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code in (429, 500, 502, 503, 504):
+                time.sleep(base * (2 ** i))
+                continue
+            raise
+        except requests.RequestException:
+            time.sleep(base * (2 ** i))
+    raise RuntimeError("Exceeded retries")
+
+def create_asset(payload):
+    def _call():
+        r = requests.post(f"{BASE}/hardware", headers=HEADERS, json=payload, timeout=60)
+        if r.status_code >= 400:
+            # bubble up for retry/handling
+            r.raise_for_status()
+        return r.json()
+    return backoff_retry(_call)
+
+def main():
+    if not TOKEN:
+        raise SystemExit("Set SNIPE_TOKEN environment variable.")
+    with open(INPUT, "r", encoding="utf-8") as f:
+        items = json.load(f)
+
+    ok, err = [], []
+
+    for item in items:
+        serial = item["serial"]
+        try:
+            model_id = get_first_id("models", item["model"])
+            if not model_id:
+                raise ValueError(f"Model not found: {item['model']}")
+
+            location_id = get_first_id("locations", item["location"])
+            if not location_id:
+                raise ValueError(f"Location not found: {item['location']}")
+
+            status_id = get_first_id("statuslabels", item["status"])
+            if not status_id:
+                raise ValueError(f"Status not found: {item['status']}")
+
+            body = {
+                "location_id": location_id,
+                "name": serial,
+                "status_id": status_id,
+                "asset_tag": item["asset_tag"],
+                "model_id": model_id,
+                "serial": serial,
+                # optional if you need strict category control:
+                # "category_id": get_first_id("categories", item.get("category", "")) or 17,
+            }
+
+            # merge custom fields if present
+            if "custom" in item:
+                body.update(item["custom"])
+
+            res = create_asset(body)
+            ok.append({"serial": serial, "id": res.get("payload", {}).get("id"), "status": "created"})
+            print(f"✓ created {serial} (id={ok[-1]['id']})")
+
+        except Exception as e:
+            err.append({"serial": serial, "error": str(e)})
+            print(f"✗ error {serial}: {e}")
+
+    # logs
+    with open(LOG_OK, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["serial", "id", "status"])
+        w.writeheader(); w.writerows(ok)
+
+    with open(LOG_ERR, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["serial", "error"])
+        w.writeheader(); w.writerows(err)
+
+if __name__ == "__main__":
+    main()
+
+## Run:
+
+export SNIPE_TOKEN=xxxxxxxxxxxxxxxx
+python3 provision_assets.py
+
+What this gives you
+
+Name/location/status lookup by name (no hard-coded IDs).
+
+Exponential backoff on 429/5xx.
+
+Success & error logs (CSV) for audit.
+
+Easy to extend for categories or people assignments
+###
