@@ -1,0 +1,9 @@
+
+
+
+Add-MailboxFolderPermission -Identity "vijay@whatever.com:\" -User "ajay@whatever.com" -AccessRights FolderVisible
+
+Add-MailboxFolderPermission -Identity "vijay@whatever.com:\" -User "ajay@whatever.com" -AccessRights FolderVisible
+
+
+Get-MailboxFolderPermission -Identity "ajay@whatever:\Drafts"
