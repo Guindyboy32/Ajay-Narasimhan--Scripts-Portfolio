@@ -1,0 +1,53 @@
+#HR-to-Snipe-IT User Provisioning & Asset Auto-Assignment
+
+# Goal: Create users from HR/IT source (CSV/HRIS/Okta), resolve IDs, create the user, then assign assets.
+
+Key endpoints
+
+Lookup helpers
+
+GET /api/v1/locations?search={{name}} → location_id
+
+GET /api/v1/companies?search={{name}} → company_id
+
+GET /api/v1/departments?search={{name}} → department_id
+
+Users
+
+GET /api/v1/users?search={{email}} (duplicate check)
+
+POST /api/v1/users (create)
+
+PUT /api/v1/users/{id} (update)
+
+Assign assets
+
+POST /api/v1/hardware/{asset_id}/assign with
+
+{"checkout_to_type":"user","assigned_to": {{user_id}} }
+
+Create user JSON (Postman body)
+{
+  "first_name": "{{first_name}}",
+  "last_name": "{{last_name}}",
+  "username": "{{username}}",
+  "email": "{{email}}",
+  "employee_num": "{{employee_num}}",
+  "activated": true,
+  "location_id": {{location_id}},
+  "company_id": {{company_id}},
+  "department_id": {{department_id}},
+  "notes": "Created via API by Automation"
+}
+
+Flow (Runner)
+
+CSV/JSON → Resolve IDs → Duplicate check → Create user → (Optional) assign pre-mapped assets by serial (lookup /hardware?search={{serial}} → asset_id → assign).
+
+Hardening:
+
+Fail if duplicate email exists
+
+Retry on 429/5xx (exponential backoff)
+
+Write success/error CSV logs
