@@ -1,0 +1,22 @@
+##Configure Automatic Replies (Out of Office) Enable automatic replies to notify senders that the user is no longer with TestDomain or ICONIQ Domain and redirect them to the appropriate contact. PowerShell Command:
+
+Set-MailboxAutoReplyConfiguration -Identity -AutoReplyState Enabled -InternalMessage "The user is no longer with TestDomain. Please contact ()." ` -ExternalMessage "The user is no longer with TestDomain. Please contact ()."
+
+##Enable Email Forwarding to Manager Forward all new mail to the user’s manager or designated successor to maintain message continuity. PowerShell Command:
+Set-Mailbox -Identity -ForwardingSMTPAddress <ManagerEmail> -DeliverToMailboxAndForward $true 
+
+## Grant Mailbox Delegation Assign delegated access to the manager or HR for visibility and follow-up. PowerShell Commands:
+
+Add-MailboxPermission -Identity -User <DelegateEmail> -AccessRights FullAccess ` -AutoMapping $true
+
+##Convert to Shared Mailbox Convert the user mailbox to a shared mailbox to retain access while eliminating the need for an active license. PowerShell Command:
+
+Set-Mailbox -Identity -Type Shared
+
+Note: Allow several minutes before removing the license. Shared mailboxes must remain below 50 GB to stay license-free.
+
+##Remove Microsoft 365 License Once verified as a shared mailbox, remove the license to reclaim it for future allocation. PowerShell Command:
+
+Set-MsolUserLicense -UserPrincipalName -RemoveLicenses "TestDomain:ENTERPRISEPACK"
+
+Validate Final Configuration Confirm that all configurations have been applied successfully. PowerShell Commands: Get-Mailbox -Identity | Select DisplayName,RecipientTypeDetails,ForwardingSMTPAddress Get-MailboxPermission -Identity | Where {$_.AccessRights -eq 'FullAccess'} Get-MsolUser -UserPrincipalName | Select DisplayName,Licenses
