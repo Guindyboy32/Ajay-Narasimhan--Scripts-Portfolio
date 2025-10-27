@@ -1,0 +1,9 @@
+#Granting Send as in EXO 
+
+add-RecipientPermission -Identity Jurassic@TestDomain.com -Trustee Alan.   
+Grant -AccessRights "SendAs"  
+
+# Confirming Send as.
+
+ Confirm with:  
+ Get-RecipientPermission -Identity Jurassic@TestDomain.com  
