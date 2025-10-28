@@ -1,0 +1,53 @@
+Procedure (Singular Commands)
+
+Connect
+Import-Module ExchangeOnlineManagement
+Connect-ExchangeOnline – RedRanger-Admin@TestKingTest.com -Device
+
+Create the M365 group (Unified Group)
+New-UnifiedGroup -DisplayName "TeamJurassic" -Alias "TeamJurassic" -AccessType Private
+-PrimarySmtpAddress "TeamJurassic@TestKingTest.com"
+
+Verify
+
+Get-UnifiedGroup -Identity "TeamJurassic" | fl
+DisplayName,Alias,AccessType,PrimarySmtpAddress,SharePointSiteUrl
+
+(Optional) Add an onmicrosoft alias (Pretty much seen this added, I would check the GUI to verify.
+Set-UnifiedGroup -Identity "TeamJurassic" -EmailAddresses
+@{add="smtp:TeamJurassic@TestKingTest.onmicrosoft.com"} See all addresses
+(Get-UnifiedGroup "TeamJurassic").EmailAddresses
+
+Make sure @TestKingTest.com is primary
+$all = (Get-UnifiedGroup "TeamJurassic").EmailAddresses
+$all = $all | Where-Object {$_ -notmatch '^SMTP:'}
+$all = @("SMTP:TeamJurassic@TestKingTest.com") + $all
+Set-UnifiedGroup -Identity "TeamJurassic" -EmailAddresses $all
+
+Set delivery/permissions one by one (Lot of this could be done in the GUI - For PowerShell Fanatics out there) 
+Set-UnifiedGroup -Identity "TeamJurassic" -RequireSenderAuthenticationEnabled:$false #Changing it to true will block external senders) 
+Set-UnifiedGroup -Identity "TeamJurassic" -AutoSubscribeNewMembers:$true
+Set-UnifiedGroup -Identity "TeamJurassic" - AlwaysSubscribeMembersToCalendarEvents:$true
+Set-UnifiedGroup -Identity "TeamJurassic" -HiddenFromAddressListsEnabled:$false
+
+Verify each setting
+
+Get-UnifiedGroup -Identity "TeamJurassic" | fl
+RequireSenderAuthenticationEnabled,SubscriptionEnabled,A
+utoSubscribeNewMembers,AlwaysSubscribeMembersToCalendarEvents,HiddenFro
+mAddressListsEnabled
+
+Add owner(s) and member(s) – This can be done through the Admin portal,
+not needed (But keeping)
+Add-UnifiedGroupLinks -Identity "TeamJurassic" -LinkType Owners -Links
+"Roger@TestKingTest.com"
+Add-UnifiedGroupLinks -Identity "TeamJurassic" -LinkType Members -Links
+"Ding@TestKingTest.com"
+Add-UnifiedGroupLinks -Identity "TeamJurassic" -LinkType Members -Links
+"Jamgo@TestKingTest.com"
+
+Verify membership -
+Get-UnifiedGroupLinks -Identity "TeamJurassic" -LinkType Owners | select
+Name,PrimarySmtpAddress
+Get-UnifiedGroupLinks -Identity "TeamJurassic" -LinkType Members | select
+Name,PrimarySmtpAddress
