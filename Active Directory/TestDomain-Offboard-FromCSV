@@ -1,0 +1,251 @@
+[CmdletBinding(SupportsShouldProcess=$true)]
+param(
+  [Parameter(Mandatory=$true)][string]$CsvPath,
+  [string]$EvidenceRoot = ".\Evidence\TestDomain",
+  [switch]$WhatIf
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# ===== ENV CONSTANTS (TestDomain) =====
+$TD_TargetDisabledOU   = 'OU=Inactive,DC=TestDomain,DC=local'
+$TD_KeepGroupsPattern  = '^Domain Users$'
+$TD_DefaultPwLength    = 24
+$TD_OofTemplate        = '{TerminatedName} is no longer with ICONIQ Capital. If you need assistance, please e-mail {ManagerName} at {ManagerEmail}. Thank you.'
+
+# ===== Ensure modules =====
+function Ensure-Module { param([string]$Name)
+  if (-not (Get-Module $Name -ListAvailable)) { throw "Required module missing: $Name" }
+}
+Ensure-Module -Name ActiveDirectory
+if (-not (Get-Module ExchangeOnlineManagement -ListAvailable)) { Write-Warning "Install-Module ExchangeOnlineManagement -Scope AllUsers recommended" }
+if (-not (Get-Module Microsoft.Graph.Users -ListAvailable))    { Write-Warning "Install-Module Microsoft.Graph -Scope AllUsers required for license removal" }
+
+# ===== Evidence helpers =====
+function New-EvidencePath { param([string]$Root,[string]$Key)
+  $dateFolder = (Get-Date -Format 'yyyyMMdd')
+  $path = Join-Path $Root "$dateFolder\$Key"
+  New-Item -ItemType Directory -Force -Path $path | Out-Null
+  return $path
+}
+function New-Log { param([string]$Path,[string]$Header='Timestamp,User,Action,Result,Details')
+  if (-not (Test-Path $Path)) { $Header | Out-File -FilePath $Path -Encoding UTF8 }
+}
+function Write-Log { param([string]$LogPath,[string]$User,[string]$Action,[string]$Result,[string]$Details='')
+  ('{0},{1},{2},{3},"{4}"' -f (Get-Date).ToString('s'), $User, $Action, $Result, $Details.Replace('"','""')) |
+    Add-Content -Path $LogPath -Encoding UTF8
+}
+
+# ===== Connections =====
+function Ensure-EXO { if (-not (Get-ConnectionInformation)) { Connect-ExchangeOnline -ShowBanner:$false | Out-Null } }
+function Ensure-Graph {
+  try { $ctx = Get-MgContext } catch { $ctx = $null }
+  if (-not $ctx) { Connect-MgGraph -Scopes "User.ReadWrite.All","Directory.ReadWrite.All" | Out-Null }
+}
+
+# ===== AD Offboarding =====
+function Invoke-ADOffboarding {
+  [CmdletBinding(SupportsShouldProcess=$true)]
+  param(
+    [Parameter(Mandatory=$true)][string]$UserId,
+    [string]$TargetDisabledOU = $TD_TargetDisabledOU,
+    [string]$KeepGroupsPattern = $TD_KeepGroupsPattern,
+    [int]$PasswordLength = $TD_DefaultPwLength,
+    [string]$EvidencePath,
+    [switch]$WhatIf
+  )
+
+  $log = Join-Path $EvidencePath "ADOffboarding-$($UserId)-$(Get-Date -Format yyyyMMdd).csv"
+  New-Log $log
+
+  $user = Get-ADUser -Identity $UserId -Properties memberOf,enabled,DistinguishedName,DisplayName -ErrorAction Stop
+  $sam  = $user.SamAccountName
+
+  # Disable
+  if ($PSCmdlet.ShouldProcess($sam, "Disable-ADAccount")) {
+    if ($user.Enabled) { Disable-ADAccount -Identity $user.DistinguishedName -WhatIf:$WhatIf; Write-Log $log $sam 'AD-Disable' 'Changed' 'Account disabled' }
+    else { Write-Log $log $sam 'AD-Disable' 'NoChange' 'Already disabled' }
+  }
+
+  # Random password
+  if ($PSCmdlet.ShouldProcess($sam, "Scramble password")) {
+    $chars = (48..57 + 65..90 + 97..122 + 35,36,64) | ForEach-Object {[char]$_}
+    $pw = -join (1..$PasswordLength | ForEach-Object { $chars | Get-Random })
+    Set-ADAccountPassword -Identity $user.DistinguishedName -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $pw -Force) -WhatIf:$WhatIf
+    Write-Log $log $sam 'AD-Password' 'Changed' "Random $PasswordLength chars"
+  }
+
+  # Snapshot groups
+  $groups = @()
+  if ($user.memberOf) { $groups = $user.memberOf | ForEach-Object { (Get-ADGroup $_).Name } | Sort-Object }
+  $groupsCsv = Join-Path $EvidencePath "Groups-$($sam)-$(Get-Date -Format yyyyMMdd).csv"
+  [PSCustomObject]@{User=$sam; DirectGroups=($groups -join ';')} | Export-Csv -Path $groupsCsv -NoTypeInformation -Encoding UTF8
+  Write-Log $log $sam 'AD-GroupsSnapshot' 'OK' $groupsCsv
+
+  # Remove groups except keeplist
+  foreach($g in $groups) {
+    if ($g -match $KeepGroupsPattern) { continue }
+    if ($PSCmdlet.ShouldProcess($sam, "Remove from $g")) {
+      Remove-ADGroupMember -Identity $g -Members $user.DistinguishedName -Confirm:$false -WhatIf:$WhatIf
+      Write-Log $log $sam 'AD-RemoveGroup' 'Changed' "Removed $g"
+    }
+  }
+
+  # Hide from GAL (if schema)
+  if ($PSCmdlet.ShouldProcess($sam, "Set msExchHideFromAddressLists=$true")) {
+    try { Set-ADUser -Identity $user.DistinguishedName -Add @{msExchHideFromAddressLists=$true} -WhatIf:$WhatIf; Write-Log $log $sam 'AD-HideFromGAL' 'Changed' 'msExchHideFromAddressLists=$true' }
+    catch { Write-Log $log $sam 'AD-HideFromGAL' 'Skipped' 'Attribute missing' }
+  }
+
+  # Move to Inactive OU
+  if ($PSCmdlet.ShouldProcess($sam, "Move to $TargetDisabledOU")) {
+    if ($user.DistinguishedName -notlike "*$TargetDisabledOU*") {
+      Move-ADObject -Identity $user.DistinguishedName -TargetPath $TargetDisabledOU -WhatIf:$WhatIf
+      Write-Log $log $sam 'AD-MoveToOU' 'Changed' $TargetDisabledOU
+    } else { Write-Log $log $sam 'AD-MoveToOU' 'NoChange' 'Already in target OU' }
+  }
+
+  [pscustomobject]@{User=$sam; GroupsCsv=$groupsCsv; Log=$log; DisplayName=$user.DisplayName}
+}
+
+# ===== Mailbox Offboarding (OOF indefinite) =====
+function Invoke-MailboxOffboarding {
+  [CmdletBinding(SupportsShouldProcess=$true)]
+  param(
+    [Parameter(Mandatory=$true)][string]$UserId,
+    [Parameter(Mandatory=$true)][string]$ManagerEmail,
+    [string]$InternalOOF,
+    [string]$ExternalOOF,
+    [switch]$KeepCopyInMailbox = $true,
+    [switch]$ConvertToShared,
+    [switch]$RemoveLicenses,
+    [string]$LogPath,
+    [switch]$WhatIf
+  )
+
+  New-Log $LogPath
+  Ensure-EXO
+
+  $mbx = Get-Mailbox -Identity $UserId -ErrorAction Stop
+  $mailUser = $mbx.PrimarySmtpAddress.ToString()
+
+  # Forwarding
+  if ($PSCmdlet.ShouldProcess($mailUser, "Enable forwarding to $ManagerEmail")) {
+    $current     = (Get-Mailbox -Identity $mbx.Identity).ForwardingSmtpAddress
+    $currentKeep = (Get-Mailbox -Identity $mbx.Identity).DeliverToMailboxAndForward
+    $targetKeep  = $KeepCopyInMailbox.IsPresent
+    if (($current -ne $ManagerEmail) -or ($currentKeep -ne $targetKeep)) {
+      Set-Mailbox -Identity $mbx.Identity -ForwardingSmtpAddress $ManagerEmail -DeliverToMailboxAndForward:$targetKeep -WhatIf:$WhatIf
+      Write-Log $LogPath $mailUser 'EXO-Forwarding' 'Changed' "To=$ManagerEmail; KeepCopy=$targetKeep"
+    } else { Write-Log $LogPath $mailUser 'EXO-Forwarding' 'NoChange' 'Already configured' }
+  }
+
+  # OOF Enabled indefinitely
+  if ($PSCmdlet.ShouldProcess($mailUser, "Enable OOF indefinitely")) {
+    $ar = Get-MailboxAutoReplyConfiguration -Identity $mbx.Identity
+    if (-not ($ar.AutoReplyState -eq 'Enabled' -and $ar.InternalMessage -eq $InternalOOF -and $ar.ExternalMessage -eq $ExternalOOF)) {
+      Set-MailboxAutoReplyConfiguration -Identity $mbx.Identity -AutoReplyState Enabled -InternalMessage $InternalOOF -ExternalMessage $ExternalOOF -ExternalAudience All -WhatIf:$WhatIf
+      Write-Log $LogPath $mailUser 'EXO-OOF' 'Changed' 'Enabled indefinitely'
+    } else { Write-Log $LogPath $mailUser 'EXO-OOF' 'NoChange' 'Already Enabled with same messages' }
+  }
+
+  # FullAccess + AutoMapping
+  if ($PSCmdlet.ShouldProcess($mailUser, "Grant FullAccess to $ManagerEmail (AutoMapping=True)")) {
+    $fa = Get-MailboxPermission -Identity $mbx.Identity -User $ManagerEmail -ErrorAction SilentlyContinue
+    if (-not ($fa -and ($fa.AccessRights -contains 'FullAccess'))) {
+      Add-MailboxPermission -Identity $mbx.Identity -User $ManagerEmail -AccessRights FullAccess -AutoMapping:$true -WhatIf:$WhatIf | Out-Null
+      Write-Log $LogPath $mailUser 'EXO-FullAccess' 'Added' "Delegate=$ManagerEmail"
+    } else { Write-Log $LogPath $mailUser 'EXO-FullAccess' 'NoChange' 'Already has FullAccess' }
+  }
+
+  # Convert to Shared
+  if ($ConvertToShared.IsPresent -and $PSCmdlet.ShouldProcess($mailUser, "Convert mailbox to Shared")) {
+    if ($mbx.RecipientTypeDetails -ne 'SharedMailbox') {
+      Set-Mailbox -Identity $mbx.Identity -Type Shared -WhatIf:$WhatIf
+      Write-Log $LogPath $mailUser 'EXO-ConvertShared' 'Changed' 'Converted to Shared'
+    } else { Write-Log $LogPath $mailUser 'EXO-ConvertShared' 'NoChange' 'Already SharedMailbox' }
+  }
+
+  # (Optional) Remove all licenses
+  $licensesRemoved = 0
+  if ($RemoveLicenses.IsPresent) {
+    Ensure-Graph
+    try {
+      $aad = Get-MgUser -UserId $UserId -ErrorAction Stop
+      $uid = $aad.Id
+      $details = Get-MgUserLicenseDetail -UserId $uid -ErrorAction SilentlyContinue
+      $skuIds = if ($details) { @($details.SkuId) } else { @( (Get-MgUser -UserId $uid -Property assignedLicenses).AssignedLicenses.SkuId ) }
+      $skuIds = $skuIds | Where-Object { $_ } | Select-Object -Unique
+      if ($skuIds -and $skuIds.Count -gt 0) {
+        Set-MgUserLicense -UserId $uid -AddLicenses @() -RemoveLicenses $skuIds | Out-Null
+        $licensesRemoved = $skuIds.Count
+        Write-Log $LogPath $mailUser 'EXO-Licenses' 'Changed' ("Removed SKUs: " + ($skuIds -join ','))
+      } else { Write-Log $LogPath $mailUser 'EXO-Licenses' 'NoChange' "No assigned licenses" }
+    } catch { Write-Log $LogPath $mailUser 'EXO-Licenses' 'Error' $_.Exception.Message; throw }
+  }
+
+  [pscustomobject]@{
+    User      = $mailUser
+    OOFState  = (Get-MailboxAutoReplyConfiguration -Identity $mbx.Identity).AutoReplyState
+    LogPath   = $LogPath
+    LicensesRemoved = $licensesRemoved
+  }
+}
+
+# ===== CSV & batch log =====
+if (-not (Test-Path $CsvPath)) { throw "CSV not found: $CsvPath" }
+$rows = Import-Csv -Path $CsvPath
+if (-not $rows) { Write-Warning "CSV is empty: $CsvPath"; return }
+
+$batch = New-EvidencePath -Root $EvidenceRoot -Key ("batch-" + (Split-Path -LeafBase $CsvPath))
+$masterLog = Join-Path $batch "TD-OffboardingMaster-$(Get-Date -Format yyyyMMdd-HHmmss).csv"
+"Timestamp,User,Stage,Result,Details" | Out-File -FilePath $masterLog -Encoding UTF8
+function Write-Master { param([string]$User,[string]$Stage,[string]$Result,[string]$Details='')
+  ('{0},{1},{2},{3},"{4}"' -f (Get-Date).ToString('s'),$User,$Stage,$Result,$Details.Replace('"','""')) |
+    Add-Content -Path $masterLog -Encoding UTF8
+}
+
+# ===== Main loop =====
+foreach ($r in $rows) {
+  $user = $r.UserId; $mgr = $r.ManagerEmail
+  if ([string]::IsNullOrWhiteSpace($user) -or [string]::IsNullOrWhiteSpace($mgr)) { Write-Master ($user ?? '<missing>') 'Validate' 'Error' 'Missing UserId or ManagerEmail'; continue }
+
+  # Resolve names (CSV override > EXO > AD > fallback)
+  $terminatedName = $r.TerminatedName
+  $managerName    = $r.ManagerName
+  if (-not $terminatedName) {
+    try { $terminatedName = (Get-Mailbox -Identity $user -ErrorAction Stop).DisplayName } catch {
+      try { $terminatedName = (Get-ADUser -Identity $user -Properties DisplayName -ErrorAction Stop).DisplayName } catch { $terminatedName = $user }
+    }
+  }
+  if (-not $managerName) {
+    try { $managerName = (Get-Recipient -Identity $mgr -ErrorAction Stop).DisplayName } catch { $managerName = $mgr }
+  }
+
+  # Compose OOF message from template
+  $oof = $TD_OofTemplate.
+    Replace('{TerminatedName}',$terminatedName).
+    Replace('{ManagerName}',$managerName).
+    Replace('{ManagerEmail}',$mgr)
+
+  $ev = New-EvidencePath -Root $EvidenceRoot -Key $user
+  $mailLog = Join-Path $ev "MailboxOffboarding-$($user)-$(Get-Date -Format yyyyMMdd).csv"
+
+  try {
+    $ad = Invoke-ADOffboarding -UserId $user -TargetDisabledOU $TD_TargetDisabledOU -KeepGroupsPattern $TD_KeepGroupsPattern -PasswordLength $TD_DefaultPwLength -EvidencePath $ev -WhatIf:$WhatIf
+    Write-Master $user 'AD' 'OK' "GroupsCsv=$($ad.GroupsCsv)"
+
+    $m  = Invoke-MailboxOffboarding -UserId $user -ManagerEmail $mgr -InternalOOF $oof -ExternalOOF $oof `
+          -KeepCopyInMailbox:([bool]::Parse(($r.KeepCopyInMailbox ?? 'true'))) `
+          -ConvertToShared:([bool]::Parse(($r.ConvertToShared ?? 'false'))) `
+          -RemoveLicenses:([bool]::Parse(($r.RemoveLicenses ?? 'false'))) `
+          -LogPath $mailLog -WhatIf:$WhatIf
+    Write-Master $user 'Mailbox' 'OK' ("OOFState={0}; LicensesRemoved={1}; Log={2}" -f $m.OOFState,$m.LicensesRemoved,$m.LogPath)
+
+    Write-Master $user 'Finalize' 'OK' ('Evidence=' + $ev)
+  }
+  catch { Write-Master $user 'Fatal' 'Error' $_.Exception.Message; continue }
+}
+
+Write-Host "Master log: $masterLog"
