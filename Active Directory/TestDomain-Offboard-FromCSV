@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $TD_TargetDisabledOU   = 'OU=Inactive,DC=TestDomain,DC=local'
 $TD_KeepGroupsPattern  = '^Domain Users$'
 $TD_DefaultPwLength    = 24
-$TD_OofTemplate        = '{TerminatedName} is no longer with ICONIQ Capital. If you need assistance, please e-mail {ManagerName} at {ManagerEmail}. Thank you.'
+$TD_OofTemplate        = '{TerminatedName} is no longer with company name. If you need assistance, please e-mail {ManagerName} at {ManagerEmail}. Thank you.'
 
 # ===== Ensure modules =====
 function Ensure-Module { param([string]$Name)
