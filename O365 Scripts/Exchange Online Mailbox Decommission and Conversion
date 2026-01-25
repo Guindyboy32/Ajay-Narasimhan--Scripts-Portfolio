@@ -1,4 +1,4 @@
-##Configure Automatic Replies (Out of Office) Enable automatic replies to notify senders that the user is no longer with TestDomain or ICONIQ Domain and redirect them to the appropriate contact. PowerShell Command:
+##Configure Automatic Replies (Out of Office) Enable automatic replies to notify senders that the user is no longer with TestDomain redirect them to the appropriate contact. PowerShell Command:
 
 Set-MailboxAutoReplyConfiguration -Identity -AutoReplyState Enabled -InternalMessage "The user is no longer with TestDomain. Please contact ()." ` -ExternalMessage "The user is no longer with TestDomain. Please contact ()."
 
