@@ -1,0 +1,65 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# --- Create Form ---
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Remote Mailbox Creator"
+$form.Size = New-Object System.Drawing.Size(420,220)
+$form.StartPosition = "CenterScreen"
+
+# --- Label ---
+$label = New-Object System.Windows.Forms.Label
+$label.Text = "Enter username (samAccountName):"
+$label.Location = New-Object System.Drawing.Point(10,20)
+$label.Size = New-Object System.Drawing.Size(250,20)
+$form.Controls.Add($label)
+
+# --- Textbox ---
+$textbox = New-Object System.Windows.Forms.TextBox
+$textbox.Location = New-Object System.Drawing.Point(10,45)
+$textbox.Size = New-Object System.Drawing.Size(380,20)
+$form.Controls.Add($textbox)
+
+# --- Output Box ---
+$output = New-Object System.Windows.Forms.TextBox
+$output.Location = New-Object System.Drawing.Point(10,110)
+$output.Size = New-Object System.Drawing.Size(380,60)
+$output.Multiline = $true
+$output.ReadOnly = $true
+$form.Controls.Add($output)
+
+# --- Button ---
+$button = New-Object System.Windows.Forms.Button
+$button.Text = "Create Remote Mailbox"
+$button.Location = New-Object System.Drawing.Point(10,75)
+$button.Size = New-Object System.Drawing.Size(380,25)
+
+$button.Add_Click({
+    $username = $textbox.Text.Trim()
+
+    if ([string]::IsNullOrWhiteSpace($username)) {
+        $output.Text = "Please enter a username."
+        return
+    }
+
+    $primary = "$username@testdomain.com"
+    $remote  = "$username@testdomain2.mail.onmicrosoft.com"
+
+    $output.Text = "Creating remote mailbox for $username..."
+
+    try {
+        Enable-RemoteMailbox -Identity $username -RemoteRoutingAddress $remote
+        Set-RemoteMailbox -Identity $username -EmailAddressPolicyEnabled $false
+        Set-RemoteMailbox -Identity $username -PrimarySmtpAddress $primary
+
+        $output.Text = "Mailbox created successfully.`r`nPrimary SMTP: $primary"
+    }
+    catch {
+        $output.Text = "Error: $($_.Exception.Message)"
+    }
+})
+
+$form.Controls.Add($button)
+
+# --- Show Form ---
+$form.ShowDialog()
