@@ -1,0 +1,138 @@
+<#
+.SYNOPSIS
+    Redirects user Known Folders (Desktop, Documents, Pictures, Downloads, Music, Videos)
+    to OneDrive for Business on Cloud PCs.
+
+.DESCRIPTION
+    This script detects the OneDrive for Business folder, validates readiness,
+    creates missing folders, migrates existing content, updates registry paths,
+    and restarts Explorer to apply changes.
+
+    Designed for Cloud PC / AVD / Enterprise environments.
+
+.VERSION
+    2.0 – Portfolio‑Ready Edition
+
+.AUTHOR
+    Rex
+#>
+
+# -----------------------------
+# Initialization
+# -----------------------------
+Write-Host "`n=== Cloud PC – OneDrive Known Folder Move (KFM) ===`n" -ForegroundColor Cyan
+
+# Logging helper
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    $color = switch ($Level) {
+        "INFO"  { "White" }
+        "WARN"  { "Yellow" }
+        "ERROR" { "Red" }
+        "OK"    { "Green" }
+    }
+    Write-Host "[$Level] $Message" -ForegroundColor $color
+}
+
+# -----------------------------
+# Detect OneDrive Business Path
+# -----------------------------
+Write-Log "Detecting OneDrive for Business path..."
+
+$OneDriveRegPath = "HKCU:\Software\Microsoft\OneDrive\Accounts\Business1"
+
+try {
+    $OneDriveBusiness = (Get-ItemProperty -Path $OneDriveRegPath -ErrorAction Stop).UserFolder
+}
+catch {
+    Write-Log "OneDrive not initialized. Waiting 10 seconds..." "WARN"
+    Start-Sleep -Seconds 10
+
+    try {
+        $OneDriveBusiness = (Get-ItemProperty -Path $OneDriveRegPath -ErrorAction Stop).UserFolder
+    }
+    catch {
+        Write-Log "OneDrive for Business path not found. Exiting." "ERROR"
+        exit 1
+    }
+}
+
+Write-Log "OneDrive detected at: $OneDriveBusiness" "OK"
+
+# -----------------------------
+# Known Folders to Redirect
+# -----------------------------
+$Folders = @{
+    "Desktop"   = "$OneDriveBusiness\Desktop"
+    "Documents" = "$OneDriveBusiness\Documents"
+    "Pictures"  = "$OneDriveBusiness\Pictures"
+    "Downloads" = "$OneDriveBusiness\Downloads"
+    "Music"     = "$OneDriveBusiness\Music"
+    "Videos"    = "$OneDriveBusiness\Videos"
+}
+
+# -----------------------------
+# Process Each Folder
+# -----------------------------
+foreach ($Folder in $Folders.Keys) {
+
+    Write-Log "Processing $Folder..."
+
+    $CurrentPath = Join-Path $env:USERPROFILE $Folder
+    $NewPath     = $Folders[$Folder]
+
+    # Create OneDrive folder if missing
+    if (-not (Test-Path $NewPath)) {
+        Write-Log "Creating OneDrive folder: $NewPath"
+        try {
+            New-Item -ItemType Directory -Path $NewPath -ErrorAction Stop | Out-Null
+        }
+        catch {
+            Write-Log "Failed to create folder: $NewPath" "ERROR"
+            continue
+        }
+    }
+
+    # Move existing files
+    if (Test-Path $CurrentPath) {
+        Write-Log "Migrating content from $CurrentPath to $NewPath"
+
+        try {
+            Get-ChildItem -Path $CurrentPath -Force -ErrorAction Stop |
+                Move-Item -Destination $NewPath -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Log "Error migrating files for $Folder: $($_.Exception.Message)" "WARN"
+        }
+    }
+
+    # Update registry
+    Write-Log "Updating registry for $Folder"
+    try {
+        New-ItemProperty `
+            -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders" `
+            -Name $Folder `
+            -Value $NewPath `
+            -Force -ErrorAction Stop | Out-Null
+    }
+    catch {
+        Write-Log "Failed to update registry for $Folder" "ERROR"
+    }
+}
+
+# -----------------------------
+# Restart Explorer
+# -----------------------------
+Write-Log "Refreshing Explorer..."
+try {
+    Stop-Process -Name explorer -Force -ErrorAction Stop
+    Write-Log "Explorer restarted successfully." "OK"
+}
+catch {
+    Write-Log "Failed to restart Explorer: $($_.Exception.Message)" "WARN"
+}
+
+Write-Log "Known Folder Move completed successfully." "OK"
