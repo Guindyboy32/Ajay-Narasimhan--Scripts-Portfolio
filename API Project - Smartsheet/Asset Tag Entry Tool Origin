@@ -1,0 +1,88 @@
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+
+# Create form
+$form = New-Object System.Windows.Forms.Form
+$form.Text = "Asset Tag Entry"
+$form.Size = New-Object System.Drawing.Size(380,300)
+$form.StartPosition = "CenterScreen"
+
+# Labels
+$labels = "Asset Tag","Serial Number","Model"
+$boxes = @()
+
+for ($i=0; $i -lt $labels.Count; $i++) {
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = $labels[$i]
+    $label.Location = New-Object System.Drawing.Point(10,20 + ($i*40))
+    $label.AutoSize = $true
+    $form.Controls.Add($label)
+
+    $box = New-Object System.Windows.Forms.TextBox
+    $box.Location = New-Object System.Drawing.Point(140,20 + ($i*40))
+    $box.Width = 200
+    $form.Controls.Add($box)
+    $boxes += $box
+}
+
+# Auto-populate Serial + Model
+$boxes[1].Text = (Get-WmiObject Win32_BIOS).SerialNumber
+$boxes[2].Text = (Get-WmiObject Win32_ComputerSystem).Model
+
+# Submit button
+$submit = New-Object System.Windows.Forms.Button
+$submit.Text = "Submit"
+$submit.Location = New-Object System.Drawing.Point(140, 160)
+$form.Controls.Add($submit)
+
+# Clear button
+$clear = New-Object System.Windows.Forms.Button
+$clear.Text = "Clear"
+$clear.Location = New-Object System.Drawing.Point(240, 160)
+$form.Controls.Add($clear)
+
+# Create output folder
+$OutputFolder = "C:\Temp"
+if (-not (Test-Path $OutputFolder)) {
+    New-Item -ItemType Directory -Path $OutputFolder | Out-Null
+}
+
+# Submit logic
+$submit.Add_Click({
+    $assetTag = $boxes[0].Text
+    $serial   = $boxes[1].Text
+    $model    = $boxes[2].Text
+
+    # Validation
+    if ([string]::IsNullOrWhiteSpace($assetTag) -or
+        [string]::IsNullOrWhiteSpace($serial) -or
+        [string]::IsNullOrWhiteSpace($model)) {
+
+        [System.Windows.Forms.MessageBox]::Show("All fields are required.","Validation Error")
+        return
+    }
+
+    # Save to CSV
+    $csvPath = Join-Path $OutputFolder "AssetCapture.csv"
+    $data = [PSCustomObject]@{
+        AssetTag = $assetTag
+        Serial   = $serial
+        Model    = $model
+        Timestamp = (Get-Date)
+    }
+    $data | Export-Csv -Path $csvPath -Append -NoTypeInformation
+
+    # Save to JSON
+    $jsonPath = Join-Path $OutputFolder "AssetCapture.json"
+    $data | ConvertTo-Json | Out-File $jsonPath -Append
+
+    [System.Windows.Forms.MessageBox]::Show("Saved successfully.`nForm will now close.")
+    $form.Close()
+})
+
+# Clear logic
+$clear.Add_Click({
+    foreach ($box in $boxes) { $box.Clear() }
+})
+
+$form.ShowDialog()
