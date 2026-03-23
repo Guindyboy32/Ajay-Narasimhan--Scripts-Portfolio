@@ -4,8 +4,8 @@ $users = Import-Csv "C:\NewHires.csv"
 foreach ($u in $users) {
 
     $sam = $u.samAccountName
-    $upn = "$sam@testdomain.com"
-    $remote = "$sam@testdomain2.mail.onmicrosoft.com"
+    $upn = "$sam@nektar.com"
+    $remote = "$sam@nektar2.mail.onmicrosoft.com"
 
     Write-Host "---------------------------------------------"
     Write-Host "Processing new hire: $sam" -ForegroundColor Cyan
@@ -15,11 +15,11 @@ foreach ($u in $users) {
     $password = Read-Host "Enter temporary password for $sam" -AsSecureString
 
     # Select template
-    if ($u.Template -eq "DomainTemplateNFTE") {
-        $template = "DomainTemplateNFTE"
+    if ($u.Template -eq "SFMBTemplateNFTE") {
+        $template = "SFMBTemplateNFTE"
     }
-    elseif ($u.Template -eq "DomainTemplate") {
-        $template = "DomainTemplate"
+    elseif ($u.Template -eq "SFMBTemplate") {
+        $template = "SFMBTemplate"
     }
     else {
         Write-Host "Unknown template for $sam. Skipping..." -ForegroundColor Red
@@ -45,7 +45,7 @@ foreach ($u in $users) {
         -Enabled $true `
         -AccountPassword $password `
         -Instance $templateUser `
-        -Path "OU=JurassicPark,OU=Site A,OU=Jurassic_Park Users,DC=JP,DC=com"
+        -Path "OU=SFMB,OU=San Francisco,OU=Nektar Users,DC=nektar,DC=com"
 
     Write-Host "AD user created for $sam." -ForegroundColor Green
     Read-Host "Press ENTER to apply extension attributes"
@@ -65,6 +65,15 @@ foreach ($u in $users) {
     }
 
     Write-Host "Extension attributes applied." -ForegroundColor Green
+    Read-Host "Press ENTER to apply Title, Department, and Address"
+
+    # Set Title, Department, and Street Address only
+Set-ADUser $sam `
+    -Title $u.Title `
+    -Department $u.Department `
+    -StreetAddress $u.StreetAddress
+
+Write-Host "Title, Department, and Street Address applied." -ForegroundColor Green
     Read-Host "Press ENTER to update manager"
 
     # Update manager (override template manager)
