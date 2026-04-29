@@ -1,16 +1,33 @@
-Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
-Type "help", "copyright", "credits" or "license()" for more information.
->>> import os
-... 
-... def schedule_shutdown(minutes):
-...     try:
-...         os.system(f'shutdown -s -t {minutes * 60}')
-...         print(f"System will shut down in {minutes} minutes.")
-...     except Exception as e:
-...         print(f"Error scheduling shutdown: {e}")
-... 
-... shutdown_minutes = 30
-... schedule_shutdown(shutdown_minutes)
-... 
-... 
-... 
+import subprocess
+import platform
+
+def schedule_shutdown(minutes: int):
+    """
+    Schedule a system shutdown after a specified number of minutes.
+
+    Parameters:
+        minutes (int): Number of minutes before shutdown.
+
+    Notes:
+        - Windows only. Uses 'shutdown -s -t <seconds>'.
+        - Includes basic validation and user confirmation.
+    """
+
+    if minutes <= 0:
+        raise ValueError("Minutes must be greater than zero.")
+
+    if platform.system() != "Windows":
+        raise OSError("This shutdown script currently supports Windows only.")
+
+    seconds = minutes * 60
+    command = ["shutdown", "-s", "-t", str(seconds)]
+
+    print(f"Scheduling shutdown in {minutes} minutes...")
+    try:
+        subprocess.run(command, check=True)
+        print("Shutdown command executed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to schedule shutdown: {e}")
+
+if __name__ == "__main__":
+    schedule_shutdown(30)
