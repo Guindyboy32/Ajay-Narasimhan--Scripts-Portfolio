@@ -1,4 +1,4 @@
-#Single user
+# Single user
 Set-Mailbox -Identity "username" -Type Shared
 
 ### Bulk - Uses CSV.
