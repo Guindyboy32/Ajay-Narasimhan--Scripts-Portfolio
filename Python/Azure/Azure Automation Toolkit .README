@@ -10,28 +10,29 @@ Each module is designed to be:
 
 What’s Inside
 This repo includes a suite of Azure automation tools:
-🔹 Virtual Machine Lifecycle Manager
+
+* Virtual Machine Lifecycle Manager
 Start, stop, and safely manage Azure VMs with:
 - Power‑state awareness
 - Dry‑run mode
 - Structured logging
 - Clean exception handling
 
-🔹 Virtual Machine Creation Utility
+* Virtual Machine Creation Utility
 Create Azure VMs using a production‑grade pattern:
 - NIC ID construction
 - Image reference configuration
 - Hardware profile definition
 - Secure credential handling (Key Vault‑ready)
 
-🔹 VM Scale Set (VMSS) Manager
+* VM Scale Set (VMSS) Manager
 Scale VMSS instances with:
 - Current capacity detection
 - Guardrails to prevent unnecessary scaling
 - Dry‑run mode
 - Detailed before/after logging
 
-🔹 VM Inventory Tool
+* VM Inventory Tool
 Enumerate all VMs in a subscription with:
 - Power state
 - OS type
@@ -39,7 +40,7 @@ Enumerate all VMs in a subscription with:
 - Tags
 - Resource group extraction
 
-🔹 Resource Group Manager
+* Resource Group Manager
 Safely delete Azure resource groups with:
 - Existence checks
 - Optional confirmation prompt
