@@ -1,1 +1,0 @@
-Set-Mailbox -Identity "username" -Type Shared
