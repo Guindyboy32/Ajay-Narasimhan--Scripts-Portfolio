@@ -1,0 +1,104 @@
+Overview
+
+This script monitors free disk space across multiple remote Windows machines and sends email alerts when available space drops below a defined threshold. It is designed for Managed Services Providers (MSPs), IT administrators, and enterprise operations teams who need proactive visibility into low‑disk‑space conditions across distributed environments.
+The script uses modern CIM queries, validates machine reachability, logs all activity, and provides a clear summary of alerts triggered during execution.
+
+Key Features
+1. Remote Disk Monitoring
+- Reads machine names from a text file
+- Validates remote connectivity before querying
+- Uses Get-CimInstance for reliable disk information retrieval
+- Monitors all fixed drives (DriveType = 3)
+
+2. Automated Email Alerts
+- Sends an alert when free space falls below a configurable threshold
+- Includes machine name, drive letter, and remaining free space
+- Uses SMTP for delivery
+- Logs all alerts for auditing
+
+3. Logging
+- Creates timestamped log files
+- Logs:
+- Machine reachability
+- Disk space values
+- Alerts sent
+- Errors encountered
+
+4. Summary Reporting
+At the end of execution, the script prints a summary showing:
+- Machines with alerts
+- Machines unreachable
+- Machines with successful checks
+
+5. Senior‑Level Engineering Practices
+- Modular functions
+- Error handling with try/catch
+- Input validation
+- Predictable, idempotent behavior
+- MSP‑friendly logging structure
+
+Requirements
+PowerShell- Windows PowerShell 5.1 or PowerShell 7.x
+
+Permissions
+- Local admin rights on remote machines
+- Remote machines must allow PowerShell Remoting
+- SMTP server must allow relay from the monitoring host
+
+Files Needed
+
+- A text file containing machine names
+Example: C:\MSP\machines.txt
+PC01
+PC02
+SERVER01
+
+Parameters
+MachinesFile - Path to the list of remote machines 
+LogPath - Directory where logs will be stored
+ThresholdGB - Minimum free space (GB) before alert triggers
+SmtpServer - SMTP server for sending alerts
+From - Sender email address
+To - Recipient email address
+
+
+
+Example Usage
+.\DiskSpaceMonitor.ps1 `
+    -MachinesFile "C:\MSP\machines.txt" `
+    -LogPath "C:\MSP\DiskAlerts" `
+    -ThresholdGB 10 `
+    -SmtpServer "smtp.example.com" `
+    -From "alerts@example.com" `
+    -To "admin@example.com"
+
+
+How It Works
+1. Initialization
+- Ensures log directory exists
+- Creates a timestamped log file
+
+2. Machine Loop
+For each machine:
+- Ping test to confirm reachability
+- Query disk information via CIM
+- Compare free space to threshold
+- Send alert if needed
+- Log all actions
+
+3. Summary Output
+At the end, the script prints a summary such as:
+PC01 - ALERT (C: 5.2 GB)
+PC02 - SUCCESS
+SERVER01 - FAILED (unreachable)
+
+
+
+Notes & Best Practices
+- Run this script from a management server with stable network access
+- Use a service account for consistent permissions
+- Consider integrating with Teams/Slack for modern alerting
+- Review logs regularly for patterns or recurring issues
+- Pair this script with your cleanup automation for remediation
+
+
