@@ -1,22 +1,70 @@
-##Configure Automatic Replies (Out of Office) Enable automatic replies to notify senders that the user is no longer with TestDomain redirect them to the appropriate contact. PowerShell Command:
+This document outlines the standardized offboarding process for users in TestDomain, including mailbox configuration, forwarding, delegation, license removal, and final validation.
+All steps use PowerShell and apply to Exchange Online Hybrid or Exchange On‑Prem with M365.
 
-Set-MailboxAutoReplyConfiguration -Identity -AutoReplyState Enabled -InternalMessage "The user is no longer with TestDomain. Please contact ()." ` -ExternalMessage "The user is no longer with TestDomain. Please contact ()."
+1. Configure Automatic Replies (Out of Office)
+Enable automatic replies to notify internal and external senders that the user is no longer with the organization.
+Set-MailboxAutoReplyConfiguration -Identity "<UserUPN>" `
+    -AutoReplyState Enabled `
+    -InternalMessage "This user is no longer with TestDomain. Please contact <ContactName> at <ContactEmail>." `
+    -ExternalMessage "This user is no longer with TestDomain. Please contact <ContactName> at <ContactEmail>."
 
-##Enable Email Forwarding to Manager Forward all new mail to the user’s manager or designated successor to maintain message continuity. PowerShell Command:
-Set-Mailbox -Identity -ForwardingSMTPAddress <ManagerEmail> -DeliverToMailboxAndForward $true 
 
-## Grant Mailbox Delegation Assign delegated access to the manager or HR for visibility and follow-up. PowerShell Commands:
 
-Add-MailboxPermission -Identity -User <DelegateEmail> -AccessRights FullAccess ` -AutoMapping $true
+2. Enable Email Forwarding to Manager
+Forward all new incoming mail to the user’s manager or designated successor.
+Set -DeliverToMailboxAndForward $true to keep a copy in the mailbox.
+Set-Mailbox -Identity "<UserUPN>" `
+    -ForwardingSMTPAddress "<ManagerEmail>" `
+    -DeliverToMailboxAndForward $true
 
-##Convert to Shared Mailbox Convert the user mailbox to a shared mailbox to retain access while eliminating the need for an active license. PowerShell Command:
 
-Set-Mailbox -Identity -Type Shared
 
-Note: Allow several minutes before removing the license. Shared mailboxes must remain below 50 GB to stay license-free.
+3. Grant Mailbox Delegation
+Provide Full Access permissions to HR, the manager, or another authorized reviewer.
+Add-MailboxPermission -Identity "<UserUPN>" `
+    -User "<DelegateEmail>" `
+    -AccessRights FullAccess `
+    -InheritanceType All `
+    -AutoMapping $true
 
-##Remove Microsoft 365 License Once verified as a shared mailbox, remove the license to reclaim it for future allocation. PowerShell Command:
 
-Set-MsolUserLicense -UserPrincipalName -RemoveLicenses "TestDomain:ENTERPRISEPACK"
 
-Validate Final Configuration Confirm that all configurations have been applied successfully. PowerShell Commands: Get-Mailbox -Identity | Select DisplayName,RecipientTypeDetails,ForwardingSMTPAddress Get-MailboxPermission -Identity | Where {$_.AccessRights -eq 'FullAccess'} Get-MsolUser -UserPrincipalName | Select DisplayName,Licenses
+4. Convert User Mailbox to Shared
+Convert the mailbox to a shared mailbox to retain access without requiring an active license.
+Set-Mailbox -Identity "<UserUPN>" -Type Shared
+
+Note:
+Allow 5–10 minutes before removing the license.
+Shared mailboxes must remain under 50 GB to stay license‑free.
+
+5. Remove Microsoft 365 License
+After confirming the mailbox is shared, remove the assigned license.
+Set-MsolUserLicense -UserPrincipalName "<UserUPN>" `
+    -RemoveLicenses "TestDomain:ENTERPRISEPACK"
+
+6.Validate Final Configuration
+Run the following commands to confirm forwarding, permissions, mailbox type, and license status.
+✔ Mailbox type & forwarding
+Get-Mailbox -Identity "<UserUPN>" |
+    Select DisplayName, RecipientTypeDetails, ForwardingSMTPAddress
+
+Delegated access
+Get-MailboxPermission -Identity "<UserUPN>" |
+    Where-Object { $_.AccessRights -contains "FullAccess" }
+
+
+License status
+Get-MsolUser -UserPrincipalName "<UserUPN>" |
+    Select DisplayName, Licenses
+
+
+Summary
+This offboarding workflow ensures:
+- Automatic replies are enabled
+- Mail forwarding is configured
+- Delegation is granted
+- The mailbox is converted to shared
+- Licenses are reclaimed
+- All configurations are validated
+
+This process maintains continuity, preserves data, and ensures compliance with TestDomain offboarding standards.
