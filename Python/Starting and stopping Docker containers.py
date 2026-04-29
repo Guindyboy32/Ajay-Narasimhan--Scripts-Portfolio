@@ -1,30 +1,53 @@
-Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
-Type "help", "copyright", "credits" or "license()" for more information.
->>> import docker
-... 
-... client = docker.from_env()
-... 
-... def start_container(container_name):
-...     try:
-...         container = client.containers.get(container_name)
-...         container.start()
-...         print(f"Container {container_name} started successfully.")
-...     except docker.errors.NotFound:
-...         print(f"Container {container_name} not found.")
-...     except Exception as e:
-...         print(f"Error starting container: {e}")
-... 
-... def stop_container(container_name):
-...     try:
-...         container = client.containers.get(container_name)
-...         container.stop()
-...         print(f"Container {container_name} stopped successfully.")
-...     except docker.errors.NotFound:
-...         print(f"Container {container_name} not found.")
-...     except Exception as e:
-...         print(f"Error stopping container: {e}")
-... 
-... start_container('my_container')
-... stop_container('my_container')
-... 
+import docker
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+class DockerManager:
+    """
+    A simple wrapper around the Docker SDK to manage containers.
+    """
+
+    def __init__(self):
+        try:
+            self.client = docker.from_env()
+        except Exception as e:
+            logging.error(f"Failed to initialize Docker client: {e}")
+            raise
+
+    def start_container(self, container_name: str) -> bool:
+        """
+        Start a Docker container by name.
+        """
+        try:
+            container = self.client.containers.get(container_name)
+            container.start()
+            logging.info(f"Container '{container_name}' started successfully.")
+            return True
+        except docker.errors.NotFound:
+            logging.error(f"Container '{container_name}' not found.")
+        except Exception as e:
+            logging.error(f"Error starting container '{container_name}': {e}")
+        return False
+
+    def stop_container(self, container_name: str) -> bool:
+        """
+        Stop a Docker container by name.
+        """
+        try:
+            container = self.client.containers.get(container_name)
+            container.stop()
+            logging.info(f"Container '{container_name}' stopped successfully.")
+            return True
+        except docker.errors.NotFound:
+            logging.error(f"Container '{container_name}' not found.")
+        except Exception as e:
+            logging.error(f"Error stopping container '{container_name}': {e}")
+        return False
+
+
+if __name__ == "__main__":
+    manager = DockerManager()
+    manager.start_container("my_container")
+    manager.stop_container("my_container")
 ... 
