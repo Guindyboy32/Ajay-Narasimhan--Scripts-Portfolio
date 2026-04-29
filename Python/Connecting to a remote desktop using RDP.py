@@ -1,11 +1,37 @@
-Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
-Type "help", "copyright", "credits" or "license()" for more information.
->>> import os
-... 
-... def connect_rdp(host, user):
-...     command = f"mstsc /v:{host} /u:{user}"
-...     os.system(command)
-... 
-... connect_rdp('remote_host', 'username')
-... 
-... 
+import subprocess
+import logging
+from typing import Optional
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def connect_rdp(host: str, user: Optional[str] = None) -> None:
+    """
+    Launch a Remote Desktop session using mstsc.
+
+    Args:
+        host (str): Hostname or IP address of the remote machine.
+        user (str | None): Optional username for the RDP session.
+    """
+    if not host:
+        logging.error("Host cannot be empty.")
+        return
+
+    command = ["mstsc", "/v:" + host]
+
+    if user:
+        command.append("/u:" + user)
+
+    logging.info(f"Launching RDP session to {host} as {user or 'current user'}")
+
+    try:
+        subprocess.run(command, check=True)
+    except FileNotFoundError:
+        logging.error("mstsc.exe not found. Ensure Remote Desktop is installed.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to start RDP session: {e}")
+
+if __name__ == "__main__":
+    connect_rdp("remote_host", "username")
