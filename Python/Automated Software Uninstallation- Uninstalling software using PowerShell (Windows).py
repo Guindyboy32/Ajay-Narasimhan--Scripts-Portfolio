@@ -1,17 +1,39 @@
-Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
-Type "help", "copyright", "credits" or "license()" for more information.
->>> import subprocess
-... 
-... def uninstall_software(software_name):
-...     try:
-...         command = f'powershell "Get-WmiObject -Class Win32_Product | Where-Object {{ $_.Name -like \'{software_name}*\' }} | ForEach-Object {{ $_.Uninstall() }}"'
-...         subprocess.run(command, shell=True, check=True)
-...         print(f"Software {software_name} uninstalled successfully.")
-...     except subprocess.CalledProcessError as e:
-...         print(f"Error uninstalling software: {e}")
-... 
-... uninstall_software('ExampleSoftware')
-... 
-... 
-... 
-... 
+import subprocess
+import shlex
+
+def uninstall_software(software_name: str):
+    """
+    Safely attempts to uninstall software using PowerShell's Get-Package.
+    Avoids Win32_Product due to MSI reconfiguration risks.
+
+    Parameters:
+        software_name (str): Name or partial name of the software to uninstall.
+    """
+
+    print(f"Searching for installed packages matching: {software_name}")
+
+    # Use Get-Package instead of Win32_Product
+    ps_command = f"""
+    $pkg = Get-Package | Where-Object {{ $_.Name -like '*{software_name}*' }};
+    if ($pkg) {{
+        Write-Output "Found: $($pkg.Name)";
+        $pkg | Uninstall-Package -Force -ErrorAction Stop;
+    }} else {{
+        Write-Output "No matching software found.";
+    }}
+    """
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-Command", ps_command],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print(result.stdout)
+    except subprocess.CalledProcessError as e:
+        print("Error during uninstall:")
+        print(e.stderr)
+
+if __name__ == "__main__":
+    uninstall_software("ExampleSoftware")
