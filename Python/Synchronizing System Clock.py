@@ -1,16 +1,45 @@
-Python 3.13.1 (tags/v3.13.1:0671451, Dec  3 2024, 19:06:28) [MSC v.1942 64 bit (AMD64)] on win32
-Type "help", "copyright", "credits" or "license()" for more information.
->>> import os
-... 
-... def synchronize_clock():
-...     os.system("sudo ntpdate time.nist.gov")
-...     print("System clock synchronized with time.nist.gov")
-... 
-... if __name__ == "__main__":
-...     synchronize_clock()
-... 
-... 
-... 
-... 
-... 
-... 
+import platform
+import subprocess
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+def synchronize_clock():
+    """
+    Synchronize the system clock using the appropriate method for the OS.
+
+    Windows:
+        Uses w32tm to resync with the configured NTP server.
+    Linux:
+        Uses timedatectl (preferred) or falls back to ntpdate if available.
+    """
+
+    system = platform.system()
+
+    try:
+        if system == "Windows":
+            logging.info("Synchronizing clock on Windows...")
+            subprocess.run(["w32tm", "/resync"], check=True)
+
+        elif system == "Linux":
+            logging.info("Synchronizing clock on Linux...")
+
+            # Preferred: timedatectl
+            try:
+                subprocess.run(["timedatectl", "set-ntp", "true"], check=True)
+            except Exception:
+                logging.warning("timedatectl not available, falling back to ntpdate...")
+                subprocess.run(["sudo", "ntpdate", "time.nist.gov"], check=True)
+
+        else:
+            logging.error(f"Unsupported OS: {system}")
+            return
+
+        logging.info("System clock synchronized successfully.")
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Clock synchronization failed: {e}")
+
+
+if __name__ == "__main__":
+    synchronize_clock()
