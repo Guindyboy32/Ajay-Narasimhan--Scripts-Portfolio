@@ -1,24 +1,24 @@
 <#
 .SYNOPSIS
-    Deploy an Azure VM, resize it safely, and configure monitoring alerts.
+    Safe, sanitized Azure VM automation script suitable for public GitHub repositories.
 
 .DESCRIPTION
-    This script performs three major automation tasks:
-      1. Deploys a fully configured Azure VM (networking, NSG, public IP, NIC)
-      2. Resizes the VM safely (deallocate → resize → start)
-      3. Creates Azure Monitor alerts with an Action Group
+    This script:
+      - Deploys an Azure VM
+      - Resizes the VM
+      - Configures Azure Monitor alerts
 
-    Includes:
-      - Parameterization
-      - Validation
-      - Idempotency checks
-      - Structured logging
-      - Error handling
+    All sensitive values (passwords, emails, subscription IDs) have been removed
+    and replaced with parameters or placeholders to ensure the script is safe
+    for public publishing.
 
 .NOTES
-    Requires Az PowerShell module and appropriate RBAC permissions.
+    Replace all <PLACEHOLDER> values before running in a real environment.
 #>
 
+# -----------------------------
+# PARAMETERS (SAFE FOR GITHUB)
+# -----------------------------
 param(
     [Parameter(Mandatory = $true)]
     [string]$ResourceGroup,
@@ -33,49 +33,41 @@ param(
     [string]$VmSize,
 
     [Parameter(Mandatory = $true)]
-    [string]$ImageSku,   # e.g., "2019-Datacenter"
+    [string]$ImageSku,   # Example: "2019-Datacenter"
 
     [Parameter(Mandatory = $true)]
     [string]$AdminUsername,
 
     [Parameter(Mandatory = $true)]
-    [SecureString]$AdminPassword,
+    [SecureString]$AdminPassword,  # No plaintext passwords
 
     [Parameter(Mandatory = $true)]
-    [string]$NewVmSize,  # For scaling up/down
+    [string]$NewVmSize,  # Resize target
 
     [Parameter(Mandatory = $true)]
-    [string]$ActionGroupEmail
+    [string]$ActionGroupEmail  # No real emails included
 )
 
-Write-Host "Starting Azure VM automation workflow..." -ForegroundColor Cyan
+Write-Host "Starting Azure VM workflow..." -ForegroundColor Cyan
 
 try {
-    # Validate Az module
-    if (-not (Get-Module -ListAvailable -Name Az.Compute)) {
-        throw "Az.Compute module is not installed. Install it using: Install-Module Az -Scope CurrentUser"
-    }
-
-    # Create Resource Group (idempotent)
+    # -----------------------------
+    # RESOURCE GROUP
+    # -----------------------------
     $rg = Get-AzResourceGroup -Name $ResourceGroup -ErrorAction SilentlyContinue
     if (-not $rg) {
-        Write-Host "Creating Resource Group '$ResourceGroup'..." -ForegroundColor Cyan
         New-AzResourceGroup -Name $ResourceGroup -Location $Location | Out-Null
     }
-    else {
-        Write-Host "Resource Group '$ResourceGroup' already exists." -ForegroundColor DarkGray
-    }
 
-    # Create VNet
-    Write-Host "Creating Virtual Network..." -ForegroundColor Cyan
+    # -----------------------------
+    # NETWORKING
+    # -----------------------------
     $vnet = New-AzVirtualNetwork `
         -ResourceGroupName $ResourceGroup `
         -Location $Location `
         -Name "$VmName-VNet" `
         -AddressPrefix "10.0.0.0/16"
 
-    # Create Subnet
-    Write-Host "Adding Subnet..." -ForegroundColor Cyan
     $subnet = Add-AzVirtualNetworkSubnetConfig `
         -Name "$VmName-Subnet" `
         -AddressPrefix "10.0.0.0/24" `
@@ -83,23 +75,17 @@ try {
 
     $vnet | Set-AzVirtualNetwork | Out-Null
 
-    # Create Public IP
-    Write-Host "Creating Public IP..." -ForegroundColor Cyan
     $publicIp = New-AzPublicIpAddress `
         -ResourceGroupName $ResourceGroup `
         -Name "$VmName-PublicIP" `
         -Location $Location `
         -AllocationMethod Dynamic
 
-    # Create NSG
-    Write-Host "Creating Network Security Group..." -ForegroundColor Cyan
     $nsg = New-AzNetworkSecurityGroup `
         -ResourceGroupName $ResourceGroup `
         -Location $Location `
         -Name "$VmName-NSG"
 
-    # Create NIC
-    Write-Host "Creating NIC..." -ForegroundColor Cyan
     $nic = New-AzNetworkInterface `
         -ResourceGroupName $ResourceGroup `
         -Location $Location `
@@ -108,8 +94,9 @@ try {
         -PublicIpAddressId $publicIp.Id `
         -NetworkSecurityGroupId $nsg.Id
 
-    # Get Image
-    Write-Host "Retrieving VM image..." -ForegroundColor Cyan
+    # -----------------------------
+    # VM IMAGE
+    # -----------------------------
     $image = Get-AzVMImage `
         -Location $Location `
         -PublisherName "MicrosoftWindowsServer" `
@@ -117,8 +104,9 @@ try {
         -Skus $ImageSku `
         -Version "latest"
 
-    # Build VM Config
-    Write-Host "Building VM configuration..." -ForegroundColor Cyan
+    # -----------------------------
+    # VM CONFIGURATION
+    # -----------------------------
     $vmConfig = New-AzVMConfig `
         -VMName $VmName `
         -VMSize $VmSize |
@@ -129,21 +117,18 @@ try {
         Set-AzVMSourceImage -Id $image.Id |
         Add-AzVMNetworkInterface -Id $nic.Id
 
-    # Deploy VM
-    Write-Host "Deploying VM '$VmName'..." -ForegroundColor Cyan
+    # -----------------------------
+    # DEPLOY VM
+    # -----------------------------
     New-AzVM `
         -ResourceGroupName $ResourceGroup `
         -Location $Location `
         -VM $vmConfig `
         -ErrorAction Stop
 
-    Write-Host "VM deployed successfully." -ForegroundColor Green
-
-    # -------------------------
-    # Resize VM
-    # -------------------------
-    Write-Host "Resizing VM to '$NewVmSize'..." -ForegroundColor Cyan
-
+    # -----------------------------
+    # RESIZE VM
+    # -----------------------------
     Stop-AzVM -ResourceGroupName $ResourceGroup -Name $VmName -Force
 
     $vm = Get-AzVM -ResourceGroupName $ResourceGroup -Name $VmName
@@ -153,14 +138,11 @@ try {
 
     Start-AzVM -ResourceGroupName $ResourceGroup -Name $VmName
 
-    Write-Host "VM resized successfully." -ForegroundColor Green
-
-    # -------------------------
-    # Monitoring & Alerts
-    # -------------------------
-    Write-Host "Configuring Azure Monitor alerts..." -ForegroundColor Cyan
-
-    $resourceId = "/subscriptions/$((Get-AzContext).Subscription.Id)/resourceGroups/$ResourceGroup/providers/Microsoft.Compute/virtualMachines/$VmName"
+    # -----------------------------
+    # MONITORING (SAFE PLACEHOLDERS)
+    # -----------------------------
+    $subscriptionId = "<SUBSCRIPTION-ID>"   # Safe placeholder
+    $resourceId = "/subscriptions/$subscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Compute/virtualMachines/$VmName"
 
     $actionGroup = New-AzActionGroup `
         -ResourceGroupName $ResourceGroup `
@@ -176,9 +158,7 @@ try {
         -WindowSize 5 `
         -Frequency 5 `
         -ActionGroupId $actionGroup.Id
-
-    Write-Host "Monitoring configured successfully." -ForegroundColor Green
 }
 catch {
-    Write-Error "Automation workflow failed. Details: $_"
+    Write-Error "Workflow failed. Details: $_"
 }
