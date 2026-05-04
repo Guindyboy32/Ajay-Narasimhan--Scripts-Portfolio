@@ -1,84 +1,121 @@
-New Hire Automation Script
-This repository contains a PowerShell script designed to automate onboarding for hybrid Active Directory + Exchange Online environments. The script is intended to be run from the Exchange Management Shell (EMS), which provides the necessary cmdlets for remote mailbox creation in hybrid mode.
-
 Overview
-This script automates the following tasks for each new hire:
-• 	Imports user data from a CSV file
-• 	Prompts for a temporary password
-• 	Selects a template user
-• 	Creates a new AD user based on the template
-• 	Applies extension attributes
-• 	Sets title, department, and address
-• 	Updates the manager attribute
-• 	Sets the office/room number
-• 	Creates a remote mailbox (hybrid)
-• 	Applies SMTP settings with policy handling
-• 	Displays mailbox validation details
+This PowerShell script automates the end‑to‑end provisioning process for new hires in a Hybrid Active Directory + Exchange Online environment. It is designed for use in the Exchange Management Shell (EMS) and supports semi‑interactive confirmations at each major step.
 
-The script pauses between major steps to allow operator verification.
+The script handles:
+- Creating on‑prem AD accounts using a template user
+- Applying extension attributes
+- Setting title, department, and address
+- Assigning the correct manager
+- Setting office location
+- Creating a remote mailbox for Exchange Online
+- Applying SMTP policies
+- Displaying mailbox validation details
+This workflow is ideal for environments where HR provides a CSV of new hires and IT provisions accounts manually but with automation assistance.
+
+Key Features
+✔ Hybrid‑Ready
+Uses on‑prem AD cmdlets and on‑prem Exchange cmdlets to provision remote mailboxes that sync to Exchange Online.
+✔ Semi‑Interactive
+Prompts for confirmation at each major step to ensure accuracy and control.
+✔ Template‑Based User Creation
+Inherits attributes from predefined AD template accounts.
+✔ Manager Lookup by EmployeeID
+Automatically assigns the correct manager if found in AD.
+✔ SMTP Policy Handling
+Automatically retries mailbox provisioning if email address policies conflict.
+✔ Mailbox Validation
+Displays final mailbox details for verification.
+
+Requirements
+Must be run in:
+- Exchange Management Shell (EMS)
+This ensures both AD and Exchange cmdlets are available.
 
 Environment Requirements
-This script is designed for hybrid Exchange environments and should be run from:
-Exchange Management Shell (EMS)
-EMS provides the required cmdlets such as:
-
-- Enable-RemoteMailbox
-- Set-RemoteMailbox
-- Get-RemoteMailbox
-
-	Additional Requirements
-• 	ActiveDirectory PowerShell module
-• 	Permissions to:
-• 	Create and modify AD users
-• 	Create remote mailboxes
-• 	Modify Exchange attributes
+- On‑prem Active Directory
+- On‑prem Exchange Server configured for Hybrid
+- Azure AD Connect syncing the target OU
+- Template users present in AD
+- Remote routing domain configured (e.g., tenant.mail.onmicrosoft.com)
 
 CSV Format
-Your  file must include the following columns:
+The script expects a CSV file with the following headers:
+samAccountName
+FirstName
+LastName
+FullNameCaps
+ManagerID
+DeptSRVPName
+DeptSRVPID
+EmployeeLevel
+StartDate
+VPID
+VPName
+EmployeeType
+Title
+Department
+StreetAddress
+Template
 
-Example CSV Row
 
-samAccountName,FirstName,LastName,FullNameCaps,ManagerID,DeptSRVPName,DeptSRVPID,EmployeeLevel,StartDate,VPID,VPName,EmployeeType,Title,Department,StreetAddress,Template
-jdoe,John,Doe,JOHN DOE,12345,Jane Smith,67890,3,2024-01-15,54321,Robert Brown,FTE,Engineer,IT,123 Main St,TestSiteTemplate
+Example Row
+jdoe,John,Doe,JOHN DOE,12345,Jane Smith,67890,3,2024-01-15,4455,Mark Lee,FullTime,Analyst,Finance,"123 Market St",TestSiteTemplate
 
- How to Run
-1. 	Open Exchange Management Shell
-2. 	Ensure you are connected to:
-• 	Active Directory
-• 	Exchange Online (if required for hybrid)
-3. 	Place  in the expected location (default: )
-4. 	Run the script: .\NewHireAutomation.ps1
-5. 	Follow the prompts for each user.
 
-Customization
-You may modify:
-• 	OU paths
-• 	Template names
-• 	Domain names
-• 	Attribute mappings
-• 	Mail routing domains
-• 	Pause/confirmation prompts
+How to Use
+- Place your CSV at:
+C:\NewHires.csv
+- Open Exchange Management Shell.
+- Run the script:
+.\NewHire-Provisioning.ps1
+- Follow the on‑screen prompts:
+- Enter temporary passwords
+- Confirm template selection
+- Approve AD user creation
+- Approve attribute stamping
+- Approve mailbox creation
+- Review mailbox validation
+Each user is processed one at a time with clear checkpoints.
 
-Why This Script Is Necessary
-Onboarding users in a hybrid Active Directory + Exchange Online environment involves a long chain of manual steps across multiple systems. Without automation, administrators must:
-- Create the AD user manually
-- Copy attributes from a template user
-- Populate extension attributes
-- Set title, department, and address fields
-- Assign the correct manager
-- Configure office/room information
-- Create a remote mailbox in Exchange hybrid
-- Apply SMTP settings and verify mailbox provisioning
+What the Script Does (Step‑By‑Step)
+1. Load CSV
+Reads all new hires and displays the count.
 
-This script is provided for educational and demonstration purposes.
-It was originally designed for a specific hybrid Active Directory and Exchange environment and will require customization before use in any other environment.
-You should review and modify:
-- OU paths
-- Domain names
-- Template user accounts
-- Attribute mappings
-- Mail routing domains
-- Hybrid Exchange configuration
+2. Prompt for Password
+SecureString input for each new hire.
 
-                     before running this script in a production environment.
+3. Select Template
+Validates template names and loads the template user.
+
+4. Create AD User
+Creates the account in the correct OU using inherited attributes.
+
+5. Apply Extension Attributes
+Stamps HR‑provided metadata.
+
+6. Apply Title, Department, Address
+Updates core identity fields.
+
+7. Assign Manager
+Looks up manager by employeeID.
+
+8. Set Office Location
+Sets physicalDeliveryOfficeName to “offsite”.
+
+9. Create Remote Mailbox
+Creates the mailbox object on‑prem for Exchange Online.
+
+10. Apply SMTP Address
+Handles policy conflicts automatically.
+
+11. Validate Mailbox
+Displays primary SMTP and email addresses.
+
+Notes
+- The script is intentionally semi‑interactive to prevent accidental provisioning errors.
+- All Exchange mailbox operations occur on‑prem, then sync to the cloud.
+- If a manager cannot be found, the script safely skips that step.
+
+Author
+Ajay Narasimhan
 
