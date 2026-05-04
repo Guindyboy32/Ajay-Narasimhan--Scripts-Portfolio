@@ -16,7 +16,7 @@
     2.0
 
 .AUTHOR
-    Ajay Narasimhan – Systems Engineer
+    Ajay Narasimhan
 #>
 
 # ==========================
