@@ -13,17 +13,23 @@ The script handles:
 This workflow is ideal for environments where HR provides a CSV of new hires and IT provisions accounts manually but with automation assistance.
 
 Key Features
-✔ Hybrid‑Ready
+
+Hybrid‑Ready
 Uses on‑prem AD cmdlets and on‑prem Exchange cmdlets to provision remote mailboxes that sync to Exchange Online.
-✔ Semi‑Interactive
+
+Semi‑Interactive
 Prompts for confirmation at each major step to ensure accuracy and control.
-✔ Template‑Based User Creation
+
+Template‑Based User Creation
 Inherits attributes from predefined AD template accounts.
-✔ Manager Lookup by EmployeeID
+
+Manager Lookup by EmployeeID
 Automatically assigns the correct manager if found in AD.
-✔ SMTP Policy Handling
+
+SMTP Policy Handling
 Automatically retries mailbox provisioning if email address policies conflict.
-✔ Mailbox Validation
+
+Mailbox Validation
 Displays final mailbox details for verification.
 
 Requirements
