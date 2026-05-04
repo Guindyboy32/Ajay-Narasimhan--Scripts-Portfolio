@@ -1,41 +1,67 @@
-# Import CSV
-$users = Import-Csv "C:\NewHires.csv"
+<#
+.SYNOPSIS
+    Semi‑interactive new‑hire provisioning script for on‑prem AD + Exchange hybrid.
 
-foreach ($u in $users) {
+.DESCRIPTION
+    This script:
+        - Imports new hires from CSV
+        - Applies template-based AD user creation
+        - Stamps extension attributes
+        - Updates manager
+        - Creates remote mailbox
+        - Applies SMTP policy
+        - Provides clean, consistent confirmations
+
+.AUTHOR
+    Ajay Narasimhan
+#>
+
+# ==========================
+# IMPORT CSV
+# ==========================
+$Users = Import-Csv "C:\NewHires.csv"
+
+Write-Host "`nLoaded $($Users.Count) new hires from CSV." -ForegroundColor Cyan
+Read-Host "Press ENTER to begin processing"
+
+foreach ($u in $Users) {
 
     $sam = $u.samAccountName
     $upn = "$sam@TestDomain.com"
     $remote = "$sam@TestDomain2.mail.onmicrosoft.com"
 
-    Write-Host "---------------------------------------------"
+    Write-Host "`n=============================================" -ForegroundColor DarkCyan
     Write-Host "Processing new hire: $sam" -ForegroundColor Cyan
-    Write-Host "---------------------------------------------"
+    Write-Host "=============================================" -ForegroundColor DarkCyan
 
-    # Prompt for password for this user
+    # ==========================
+    # PASSWORD PROMPT
+    # ==========================
     $password = Read-Host "Enter temporary password for $sam" -AsSecureString
 
-    # Select template
-    if ($u.Template -eq "TestSiteTemplateNFTE") {
-        $template = "TestSiteTemplateNFTE"
-    }
-    elseif ($u.Template -eq "TestSiteTemplate") {
-        $template = "TestSiteTemplate"
-    }
-    else {
-        Write-Host "Unknown template for $sam. Skipping..." -ForegroundColor Red
-        continue
+    # ==========================
+    # TEMPLATE SELECTION
+    # ==========================
+    switch ($u.Template) {
+        "TestSiteTemplateNFTE" { $template = "TestSiteTemplateNFTE" }
+        "TestSiteTemplate"     { $template = "TestSiteTemplate" }
+        default {
+            Write-Host "Unknown template for $sam. Skipping user." -ForegroundColor Red
+            continue
+        }
     }
 
     Write-Host "Template selected: $template" -ForegroundColor Yellow
     Read-Host "Press ENTER to load template user"
 
-    # Get template user
     $templateUser = Get-ADUser $template -Properties *
 
+    # ==========================
+    # CREATE AD USER
+    # ==========================
     Write-Host "Ready to create AD user: $sam" -ForegroundColor Yellow
-    Read-Host "Press ENTER to create the AD user"
+    Read-Host "Press ENTER to create user"
 
-    # Create AD user from template
     New-ADUser `
         -SamAccountName $sam `
         -UserPrincipalName $upn `
@@ -47,10 +73,13 @@ foreach ($u in $users) {
         -Instance $templateUser `
         -Path "OU=TestSite,OU=San Francisco,OU=TestDomain Users,DC=TestDomain,DC=com"
 
-    Write-Host "AD user created for $sam." -ForegroundColor Green
+    Write-Host "AD user created." -ForegroundColor Green
+
+    # ==========================
+    # EXTENSION ATTRIBUTES
+    # ==========================
     Read-Host "Press ENTER to apply extension attributes"
 
-    # Set extension attributes
     Set-ADUser $sam -Add @{
         extensionAttribute1  = $u.FullNameCaps
         extensionAttribute2  = $u.ManagerID
@@ -65,43 +94,57 @@ foreach ($u in $users) {
     }
 
     Write-Host "Extension attributes applied." -ForegroundColor Green
+
+    # ==========================
+    # TITLE / DEPARTMENT / ADDRESS
+    # ==========================
     Read-Host "Press ENTER to apply Title, Department, and Address"
 
-    # Set Title, Department, and Street Address only
     Set-ADUser $sam `
         -Title $u.Title `
         -Department $u.Department `
         -StreetAddress $u.StreetAddress
 
-    Write-Host "Title, Department, and Street Address applied." -ForegroundColor Green
+    Write-Host "Title, Department, and Address applied." -ForegroundColor Green
+
+    # ==========================
+    # MANAGER UPDATE
+    # ==========================
     Read-Host "Press ENTER to update manager"
 
-    # Update manager (override template manager)
     $manager = Get-ADUser -Filter "employeeID -eq '$($u.ManagerID)'" -Properties DistinguishedName
+
     if ($manager) {
         Set-ADUser $sam -Manager $manager.DistinguishedName
-        Write-Host "Manager updated to $($manager.DistinguishedName)." -ForegroundColor Green
-    } else {
-        Write-Host "Manager not found. Skipping manager update." -ForegroundColor Yellow
+        Write-Host "Manager updated to: $($manager.DistinguishedName)" -ForegroundColor Green
+    }
+    else {
+        Write-Host "Manager not found. Skipping." -ForegroundColor Yellow
     }
 
-    Read-Host "Press ENTER to set room number to offsite"
+    # ==========================
+    # OFFICE LOCATION
+    # ==========================
+    Read-Host "Press ENTER to set room number to Off-Site"
 
-    # Set room number to Off-Site
     Set-ADUser $sam -Replace @{ physicalDeliveryOfficeName = "offsite" }
     Write-Host "Room number set to Off-Site." -ForegroundColor Green
 
+    # ==========================
+    # REMOTE MAILBOX CREATION
+    # ==========================
     Read-Host "Press ENTER to create remote mailbox"
 
-    # Create Remote Mailbox
     Enable-RemoteMailbox -Identity $sam -RemoteRoutingAddress $remote
 
     Start-Sleep -Seconds 2
 
+    # ==========================
+    # SMTP ADDRESS
+    # ==========================
     Write-Host "Applying primary SMTP address..." -ForegroundColor Yellow
     Read-Host "Press ENTER to continue"
 
-    # Apply primary SMTP with policy handling
     try {
         Set-RemoteMailbox -Identity $sam -PrimarySmtpAddress $upn -EmailAddressPolicyEnabled $true -ErrorAction Stop
         Write-Host "SMTP applied with policy enabled." -ForegroundColor Green
@@ -113,14 +156,14 @@ foreach ($u in $users) {
 
     Start-Sleep -Seconds 2
 
+    # ==========================
+    # VALIDATION
+    # ==========================
     Write-Host "Validating mailbox..." -ForegroundColor Yellow
     Read-Host "Press ENTER to show mailbox details"
 
-    # Validation
     Get-RemoteMailbox $sam | Select Name,PrimarySmtpAddress,EmailAddresses | Format-List
 
-    Write-Host "---------------------------------------------"
-    Write-Host "Completed user: $sam" -ForegroundColor Cyan
-    Write-Host "---------------------------------------------"
+    Write-Host "`nCompleted user: $sam" -ForegroundColor Cyan
     Read-Host "Press ENTER to continue to next user"
 }
