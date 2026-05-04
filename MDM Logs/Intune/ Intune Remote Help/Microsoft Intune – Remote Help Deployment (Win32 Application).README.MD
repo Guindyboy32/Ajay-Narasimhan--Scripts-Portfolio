@@ -1,4 +1,5 @@
-Project Status: Retired
+Project Status: Complete
+
 This project has been successfully completed and retired following the organization’s transition to a broader remote‑support strategy.
 The documentation remains available as a reference architecture for future Intune Win32 deployments, packaging standards, and enterprise rollout patterns.
 Although the Remote Help deployment is no longer actively maintained, the material here continues to serve as a technical blueprint for:
