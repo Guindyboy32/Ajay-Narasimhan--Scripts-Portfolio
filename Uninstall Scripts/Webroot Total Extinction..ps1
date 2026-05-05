@@ -1,90 +1,60 @@
-﻿# Define registry keys to be removed
-$RegKeys = @(
-    "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\WRUNINST",
-    "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\WRUNINST",
-    "HKLM:\\SOFTWARE\\WOW6432Node\\WRData",
-    "HKLM:\\SOFTWARE\\WOW6432Node\\WRCore",
-    "HKLM:\\SOFTWARE\\WOW6432Node\\WRMIDData",
-    "HKLM:\\SOFTWARE\\WOW6432Node\\webroot",
-    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WRUNINST",
-    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\WRUNINST",
-    "HKLM:\\SOFTWARE\\WRData",
-    "HKLM:\\SOFTWARE\\WRMIDData",
-    "HKLM:\\SOFTWARE\\WRCore",
-    "HKLM:\\SOFTWARE\\webroot",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\WRSVC",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\WRkrn",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\WRBoot",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\WRCore",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\WRCoreService",
-    "HKLM:\\SYSTEM\\ControlSet001\\services\\wrUrlFlt",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\WRSVC",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\WRkrn",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\WRBoot",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\WRCore",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\WRCoreService",
-    "HKLM:\\SYSTEM\\ControlSet002\\services\\wrUrlFlt",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRSVC",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRkrn",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRBoot",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRCore",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRCoreService",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\wrUrlFlt"
-)
+<#
+.SYNOPSIS
+    Fully removes Webroot SecureAnywhere and all related components.
 
-# Remove registry keys
-foreach ($key in $RegKeys) {
-    if (Test-Path $key) {
-        Remove-Item $key -Recurse -Force
-    }
+.DESCRIPTION
+    Stops Webroot services, runs the official uninstaller, removes leftover
+    folders, registry keys, scheduled tasks, and startup entries.
+#>
+
+# -----------------------------
+# Logging
+# -----------------------------
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    $timestamp = Get-Date -Format "MM/dd/yy HH:mm:ss"
+    Write-Host "[$timestamp] [$Level] $Message"
 }
 
-# Uninstall Webroot SecureAnywhere
-Start-Process -FilePath "$env:ProgramFiles\Webroot\WRSA.exe" -ArgumentList "-uninstall" -Wait -ErrorAction SilentlyContinue
+Write-Log "Starting Webroot removal workflow..."
 
-# Remove Webroot DNS Protection startup item
-$RegStartupPaths = @(
-    "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run",
-    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
-)
-
-foreach ($path in $RegStartupPaths) {
-    if (Test-Path $path) {
-        Remove-Item $path -Recurse -Force
-    }
-}
-
-# Remove Webroot DNS Protection folders
-$Folders = @(
-    "$env:ProgramData\WRData",
-    "$env:ProgramData\WRCore",
-    "$env:ProgramFiles\Webroot",
-    "$env:ProgramFiles(x86)\Webroot",
-    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Webroot SecureAnywhere"
-)
-
-foreach ($folder in $Folders) {
-    if (Test-Path $folder) {
-        Remove-Item $folder -Recurse -Force
-    }
-}
-
-# Remove Webroot DNS Protection services
+# -----------------------------
+# Stop and Disable Services
+# -----------------------------
 $Services = @(
-    "WRSVC",
-    "WRkrn",
-    "WRBoot",
-    "WRCore",
-    "WRCoreService",
-    "wrUrlFlt"
+    "WRSVC","WRkrn","WRBoot","WRCore","WRCoreService","wrUrlFlt"
 )
 
-foreach ($service in $Services) {
-    Get-Service -Name $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue
-    Get-Service -Name $service -ErrorAction SilentlyContinue | Set-Service -StartupType Disabled -ErrorAction SilentlyContinue
+foreach ($svc in $Services) {
+    $serviceObj = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($serviceObj) {
+        Write-Log "Stopping service: $svc"
+        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+        Write-Log "Disabling service: $svc"
+        Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+    }
 }
 
-# Remove Webroot DNS Protection tasks
+# -----------------------------
+# Run Webroot Uninstaller
+# -----------------------------
+$wrsaPath = "$env:ProgramFiles\Webroot\WRSA.exe"
+
+if (Test-Path $wrsaPath) {
+    Write-Log "Running Webroot uninstaller..."
+    Start-Process -FilePath $wrsaPath -ArgumentList "-uninstall" -Wait -ErrorAction SilentlyContinue
+} else {
+    Write-Log "WRSA.exe not found. Continuing with manual cleanup." "WARN"
+}
+
+Start-Sleep -Seconds 3
+
+# -----------------------------
+# Remove Scheduled Tasks
+# -----------------------------
 $Tasks = @(
     "\Webroot SecureAnywhere",
     "\Webroot SecureAnywhere Global Scan",
@@ -92,97 +62,77 @@ $Tasks = @(
 )
 
 foreach ($task in $Tasks) {
-    if (Test-Path "C:\Windows\System32\Tasks\$task") {
-        schtasks /delete /tn $task /f
-    }
-}
-
-
-
-
-
-
-
-
-
-# Stop and disable Webroot services
-$services = @("WRSVC", "WRkrn", "WRBoot", "WRCore", "WRCoreService", "wrUrlFlt")
-
-foreach ($service in $services) {
-    if (Get-Service -Name $service -ErrorAction SilentlyContinue) {
-        Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
-        Set-Service -Name $service -StartupType Disabled -ErrorAction SilentlyContinue
-    }
-}
-
-# Remove Webroot SecureAnywhere
-$regKeys = @(
-    "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Webroot SecureAnywhere",
-    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Webroot SecureAnywhere"
-)
-
-foreach ($key in $regKeys) {
-    if (Test-Path $key) {
-        Remove-Item $key -Recurse -Force
-    }
-}
-
-# Uninstall Webroot SecureAnywhere using its uninstaller
-$wrsaPath = "$env:ProgramFiles\Webroot\WRSA.exe"
-if (Test-Path $wrsaPath) {
-    Start-Process -FilePath $wrsaPath -ArgumentList "-uninstall" -Wait -ErrorAction SilentlyContinue
-}
-
-# Remove Webroot DNS Protection startup items
-$regStartupPaths = @(
-    "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run",
-    "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
-)
-
-foreach ($path in $regStartupPaths) {
-    if (Test-Path $path) {
-        Remove-Item $path -Recurse -Force
-    }
-}
-
-# Remove Webroot DNS Protection folders
-$folders = @(
-    "$env:ProgramData\WRData",
-    "$env:ProgramData\WRCore",
-    "$env:ProgramFiles\Webroot",
-    "$env:ProgramFiles(x86)\Webroot",
-    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Webroot SecureAnywhere"
-)
-
-foreach ($folder in $folders) {
-    if (Test-Path $folder) {
-        Remove-Item $folder -Recurse -Force
-    }
-}
-
-# Remove Webroot DNS Protection tasks
-$tasks = @(
-    "\Webroot SecureAnywhere",
-    "\Webroot SecureAnywhere Global Scan",
-    "\Webroot SecureAnywhere Instant Scan"
-)
-
-foreach ($task in $tasks) {
+    Write-Log "Removing scheduled task: $task"
     schtasks /delete /tn $task /f 2>$null
 }
 
-# Remove remaining registry keys for Webroot services
-$regServiceKeys = @(
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRSVC",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRkrn",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRBoot",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRCore",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\WRCoreService",
-    "HKLM:\\SYSTEM\\CurrentControlSet\\services\\wrUrlFlt"
+# -----------------------------
+# Remove Startup Entries
+# -----------------------------
+$StartupPaths = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run"
 )
 
-foreach ($key in $regServiceKeys) {
-    if (Test-Path $key) {
-        Remove-Item $key -Recurse -Force
+foreach ($path in $StartupPaths) {
+    if (Test-Path $path) {
+        Write-Log "Removing Webroot startup entries from: $path"
+        Get-ItemProperty -Path $path | ForEach-Object {
+            if ($_ -match "webroot|wrsa|wrdata|wrcore") {
+                Remove-ItemProperty -Path $path -Name $_.PSChildName -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
+
+# -----------------------------
+# Remove Folders
+# -----------------------------
+$Folders = @(
+    "$env:ProgramFiles\Webroot",
+    "$env:ProgramFiles(x86)\Webroot",
+    "$env:ProgramData\WRData",
+    "$env:ProgramData\WRCore",
+    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Webroot SecureAnywhere"
+)
+
+foreach ($folder in $Folders) {
+    if (Test-Path $folder) {
+        Write-Log "Removing folder: $folder"
+        Remove-Item -Path $folder -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# -----------------------------
+# Remove Registry Keys
+# -----------------------------
+$RegKeys = @(
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\WRUNINST",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\WRUNINST",
+    "HKLM:\SOFTWARE\WOW6432Node\WRData",
+    "HKLM:\SOFTWARE\WOW6432Node\WRCore",
+    "HKLM:\SOFTWARE\WOW6432Node\WRMIDData",
+    "HKLM:\SOFTWARE\WOW6432Node\webroot",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WRUNINST",
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WRUNINST",
+    "HKLM:\SOFTWARE\WRData",
+    "HKLM:\SOFTWARE\WRMIDData",
+    "HKLM:\SOFTWARE\WRCore",
+    "HKLM:\SOFTWARE\webroot",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\WRSVC",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\WRkrn",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\WRBoot",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\WRCore",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\WRCoreService",
+    "HKLM:\SYSTEM\CurrentControlSet\Services\wrUrlFlt"
+)
+
+foreach ($key in $RegKeys) {
+    if (Test-Path $key) {
+        Write-Log "Removing registry key: $key"
+        Remove-Item -Path $key -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Write-Log "Webroot removal workflow complete."
+exit 0
