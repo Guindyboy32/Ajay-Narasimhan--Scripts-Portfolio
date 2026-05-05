@@ -8,7 +8,7 @@
     downloads the installer, and executes it.
 
 .NOTES
-    Author: Ajay Narasimhan (rewritten version)
+    Author: Ajay Narasimhan 
     Requires: PowerShell 5+, TLS 1.2+
 #>
 
