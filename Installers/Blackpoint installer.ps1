@@ -1,146 +1,149 @@
-﻿#Installer Name
-$InstallerName = "snap_installer.exe"
-#InstallsLocation
-$InstallerPath =  Join-Path $env:TEMP $InstallerName
-#Service Name
-$SnapServiceName = "Snap"
-#$Windows10 = "Microsoft Windows 10"
-$SITES_Enabled = "$env:SNAP_AllowSites"
+<#
+.SYNOPSIS
+    Installs the Blackpoint SNAP agent with proper validation, logging, and error handling.
 
-If ($SITES_Enabled -eq 1) {
-#Account UID found in URL 
-$AccountUID = "$env:SNAP_UID"
-#Snap Installer name
-$CompanyEXE = "$env:SNAP_FILE" 
-#Snap URL
-$DownloadURL = "https://portal.blackpointcyber.com/installer/$AccountUID/$CompanyEXE"
-#Added for customers who do note use sites. 
+.DESCRIPTION
+    This script downloads and installs the SNAP agent based on environment variables
+    provided by the deployment system. It validates .NET, checks for existing installs,
+    downloads the installer, and executes it.
+
+.NOTES
+    Author: Ajay Narasimhan (rewritten version)
+    Requires: PowerShell 5+, TLS 1.2+
+#>
+
+param(
+    [switch]$Debug
+)
+
+# -----------------------------
+# Configuration
+# -----------------------------
+$InstallerName   = "snap_installer.exe"
+$InstallerPath   = Join-Path -Path $env:TEMP -ChildPath $InstallerName
+$ServiceName     = "Snap"
+$SitesEnabled    = [int]$env:SNAP_AllowSites
+
+# Determine download URL
+if ($SitesEnabled -eq 1) {
+    $AccountUID = $env:SNAP_UID
+    $CompanyEXE = $env:SNAP_FILE
+    $DownloadURL = "https://portal.blackpointcyber.com/installer/$AccountUID/$CompanyEXE"
 }
-If ($SITES_Enabled -eq 0){
-    $DownloadURL = "$env:SNAP_DOWNLOAD"
+elseif ($SitesEnabled -eq 0) {
+    $DownloadURL = $env:SNAP_DOWNLOAD
+}
+else {
+    throw "Invalid value for SNAP_AllowSites environment variable."
 }
 
+# -----------------------------
+# Logging
+# -----------------------------
+function Write-Log {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
 
-#Enable Debug with 1
-$DebugMode = 1 
-
-#Failure message
-$Failure = "Snap was not installed Successfully. Contact support@blackpointcyber.com if you need more help."
-
-function Get-TimeStamp {
-    return "[{0:MM/dd/yy} {0:HH:mm:ss}]" -f (Get-Date)
+    $timestamp = Get-Date -Format "MM/dd/yy HH:mm:ss"
+    Write-Output "[$timestamp] [$Level] $Message"
 }
 
+function Write-DebugLog {
+    param([string]$Message)
+    if ($Debug) {
+        Write-Log -Message $Message -Level "DEBUG"
+    }
+}
 
-#Checking if the Service is Running
-function Snap-Check($service)
-{
-    if (Get-Service $service -ErrorAction SilentlyContinue)
-    {
+# -----------------------------
+# Validation Functions
+# -----------------------------
+function Test-ServiceExists {
+    param([string]$Name)
+    try {
+        Get-Service -Name $Name -ErrorAction Stop | Out-Null
         return $true
     }
-    return $false
-}
-
-#Debug 
-function Debug-Print ($message)
-{
-    if ($DebugMode -eq 1)
-    {
-        Write-Host "$(Get-TimeStamp) [DEBUG] $message"
+    catch {
+        return $false
     }
 }
 
-#Checking .NET Ver 4.6.1
-function Net-Check {
-    #Left in to help with troubleshooting
-    #$$cimreturn = (Get-CimInstance Win32_Operatingsystem | Select-Object -expand Caption -ErrorAction SilentlyContinue) 
-    #$windowsfull =  $cimreturn
-    #$WindowsSmall = $windowsfull.Split(" ")
-    #[string]$WindowsSmall[0..($WindowsSmall.Count-2)]
-    #If ($WindowsSmall -eq $Windows10) {  
-    
-    Debug-Print("Checking for .NET 4.6.1+...") 
-    #Calls Net Ver 
-        If (! (Get-ItemProperty "HKLM:SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full").Release -gt 394254){
-                   
+function Test-DotNet {
+    Write-DebugLog "Checking for .NET 4.6.1+..."
 
-        $NetError = "SNAP needs 4.6.1+ of .NET...EXITING" 
-        Write-Host "$(Get-TimeStamp) $NetError"
-        exit 0
-        }
-        
-        {
-        Debug-Print ("4.6.1+ Installed...")
-        }
-           
+    $release = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" -Name Release -ErrorAction SilentlyContinue
+
+    if (-not $release -or $release -lt 394254) {
+        Write-Log "SNAP requires .NET Framework 4.6.1 or higher. Installation cannot continue." "ERROR"
+        throw "Missing required .NET version."
+    }
+
+    Write-DebugLog ".NET 4.6.1+ detected."
 }
 
-      
-
-#Downloads file
+# -----------------------------
+# Download & Install
+# -----------------------------
 function Download-Installer {
-    Debug-Print("Downloading from provided $DownloadURL...")
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $Client = New-Object System.Net.Webclient
-    try
-    {
-        $Client.DownloadFile($DownloadURL, $InstallerPath)
-    }
-    catch
-    {
-    $ErrorMsg = $_.Exception.Message
-    Write-Host "$(Get-TimeStamp) $ErrorMsg"
-    }
-    If ( ! (Test-Path $InstallerPath) ) {
-        $DownloadError = "Failed to download the SNAP Installation file from $DownloadURL"
-        Write-Host "$(Get-TimeStamp) $DownloadError" 
-        throw $Failure
-    }
-    Debug-Print ("Installer Downloaded to $InstallerPath...")
+    Write-DebugLog "Downloading installer from $DownloadURL"
 
+    try {
+        Invoke-WebRequest -Uri $DownloadURL -OutFile $InstallerPath -UseBasicParsing -ErrorAction Stop
+    }
+    catch {
+        throw "Failed to download installer: $($_.Exception.Message)"
+    }
 
+    if (-not (Test-Path $InstallerPath)) {
+        throw "Installer file not found after download."
+    }
+
+    Write-DebugLog "Installer downloaded to $InstallerPath"
 }
 
-#Installation 
 function Install-Snap {
-    Debug-Print ("Verifying AV did not steal exe...")
-    If (! (Test-Path $InstallerPath)) {
-    {
-        $AVError = "Something, or someone, deleted the file."
-        Write-Host "$(Get-TimeStamp) $AVError"
-        throw $Failure
+    Write-DebugLog "Verifying installer file exists..."
+
+    if (-not (Test-Path $InstallerPath)) {
+        throw "Installer file missing. AV or another process may have removed it."
     }
+
+    Write-DebugLog "Running installer..."
+    try {
+        Start-Process -FilePath $InstallerPath -ArgumentList "-y" -NoNewWindow -Wait
     }
-    Debug-Print ("Unpackaginging and Installing agent...")
-    Start-Process -NoNewWindow -FilePath $InstallerPath -ArgumentList "-y"    
-    
+    catch {
+        throw "Installer execution failed: $($_.Exception.Message)"
+    }
 }
 
+# -----------------------------
+# Main Execution
+# -----------------------------
+function Start-Installation {
+    Write-DebugLog "Starting SNAP installation workflow..."
 
-function runMe {
-    Debug-Print("Starting...")
-    Debug-Print("Checking if SNAP is already installed...")
-    If ( Snap-Check($SnapServiceName) )
-    {
-        $ServiceError = "SNAP is Already Installed...Bye." 
-        Write-Host "$(Get-TimeStamp) $ServiceError"
-        exit 0
+    if (Test-ServiceExists -Name $ServiceName) {
+        Write-Log "SNAP is already installed. Exiting."
+        return
     }
-    Net-Check
+
+    Test-DotNet
     Download-Installer
     Install-Snap
-  # Error-Test
-    Write-Host "$(Get-TimeStamp) Snap Installed..."
+
+    Write-Log "SNAP installation completed successfully."
 }
 
-try
-{
-    runMe
+try {
+    Start-Installation
 }
-catch
-{
-    $ErrorMsg = $_.Exception.Message
-    Write-Host "$(Get-TimeStamp) $ErrorMsg"
+catch {
+    Write-Log $_.Exception.Message "ERROR"
     exit 1
 }
+
+exit 0
